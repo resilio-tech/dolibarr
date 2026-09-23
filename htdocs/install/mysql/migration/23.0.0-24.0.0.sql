@@ -583,4 +583,9 @@ ALTER TABLE llx_societe_rib ADD COLUMN payment_reference varchar(35) AFTER date_
 
 ALTER TABLE llx_facture_fourn MODIFY COLUMN payment_reference varchar(35);
 
+-- SEPA files: category purpose (PmtTpInf/CtgyPurp) and local instrument (PmtTpInf/LclInstrm) per bank account.
+-- Allowed codes are the ISO 20022 lists kept as constants of the Account class (Account::SEPA_CATEGORY_PURPOSES, Account::SEPA_LOCAL_INSTRUMENTS).
+ALTER TABLE llx_bank_account ADD COLUMN sepa_category_purpose varchar(4) DEFAULT 'CORE' AFTER pti_in_ctti;
+ALTER TABLE llx_bank_account ADD COLUMN sepa_local_instrument varchar(4) DEFAULT 'CORE' AFTER sepa_category_purpose;
+
 -- end of migration
