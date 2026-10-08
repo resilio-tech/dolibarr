@@ -375,7 +375,7 @@ class PropaleLigne extends CommonObjectLine
 	 */
 	public function wasEnteredIncludingTax()
 	{
-		return isset($this->subprice_ttc) && (float) $this->subprice_ttc != 0;
+		return (float) $this->subprice_ttc != 0;
 	}
 
 	/**
