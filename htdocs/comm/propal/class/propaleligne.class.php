@@ -416,7 +416,7 @@ class PropaleLigne extends CommonObjectLine
 				$this->qty = $objp->qty;
 				$this->price			= $objp->price; // deprecated
 				$this->subprice = $objp->subprice;
-				$this->subprice_ttc = $objp->subprice_ttc;
+				$this->subprice_ttc = (float) $objp->subprice_ttc;
 				$this->vat_src_code = $objp->vat_src_code;
 				$this->tva_tx			= $objp->tva_tx;
 				$this->remise			= $objp->remise; // deprecated
