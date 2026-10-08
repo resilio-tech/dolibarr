@@ -375,7 +375,7 @@ class PropaleLigne extends CommonObjectLine
 	 */
 	public function wasEnteredIncludingTax()
 	{
-		return isset($this->subprice_ttc) && (float) $this->subprice_ttc != 0;
+		return (float) $this->subprice_ttc != 0;
 	}
 
 	/**
@@ -416,7 +416,7 @@ class PropaleLigne extends CommonObjectLine
 				$this->qty = $objp->qty;
 				$this->price = $objp->price; // deprecated
 				$this->subprice = $objp->subprice;
-				$this->subprice_ttc = $objp->subprice_ttc;
+				$this->subprice_ttc = (float) $objp->subprice_ttc;
 				$this->vat_src_code = $objp->vat_src_code;
 				$this->tva_tx			= $objp->tva_tx;
 				$this->remise			= $objp->remise; // deprecated
@@ -522,6 +522,9 @@ class PropaleLigne extends CommonObjectLine
 		}
 		if (empty($this->total_localtax2)) {
 			$this->total_localtax2 = 0;
+		}
+		if (empty($this->subprice_ttc)) {
+			$this->subprice_ttc = 0;
 		}
 		if (empty($this->rang)) {
 			$this->rang = 0;
@@ -774,6 +777,9 @@ class PropaleLigne extends CommonObjectLine
 		}
 		if (empty($this->subprice)) {
 			$this->subprice = 0;
+		}
+		if (empty($this->subprice_ttc)) {
+			$this->subprice_ttc = 0;
 		}
 		if (empty($this->pa_ht)) {
 			$this->pa_ht = 0;
