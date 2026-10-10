@@ -749,7 +749,7 @@ if (empty($reshook)) {
 			setEventMessages($object->error, $object->errors, 'errors');
 			$action = '';
 		}
-	} elseif ($action == 'classifyclosed' && $permissiontoread) {
+	} elseif ($action == 'classifyclosed' && $permissiontoadd) {
 		$result = $object->setClosed();
 		if ($result >= 0) {
 			header('Location: '.$_SERVER["PHP_SELF"].'?id='.$object->id);
@@ -2028,7 +2028,7 @@ if ($action == 'create' && $permissiontoadd) {
 		$objectsrc = new Propal($db);
 		$objectsrc->fetch($object->origin_object->id);
 	}
-	if (($typeobject == 'supplier_order' || $typeobject == 'CommandeFournisseur') && $object->origin_object->id && isModEnabled("supplier_order")) {
+	if (($typeobject == 'order_supplier' || $typeobject == 'supplier_order' || $typeobject == 'CommandeFournisseur') && $object->origin_object->id && isModEnabled("supplier_order")) {
 		$objectsrc = new CommandeFournisseur($db);
 		$objectsrc->fetch($object->origin_object->id);
 	}
@@ -2115,7 +2115,7 @@ if ($action == 'create' && $permissiontoadd) {
 		print "</td>\n";
 		print '</tr>';
 	}
-	if (($typeobject == 'supplier_order' || $typeobject == 'CommandeFournisseur') && $object->origin_object->id && isModEnabled("propal")) {
+	if (($typeobject == 'order_supplier' || $typeobject == 'supplier_order' || $typeobject == 'CommandeFournisseur') && $object->origin_object->id && isModEnabled("supplier_order")) {
 		print '<tr><td>';
 		print $langs->trans("SupplierOrder").'</td>';
 		print '<td colspan="3">';
@@ -2504,7 +2504,9 @@ if ($action == 'create' && $permissiontoadd) {
 		// Get list of products already sent for same source object into $alreadysent
 		$alreadysent = array();
 
-		if (empty($origin)) {
+		// The origin may arrive as 'order_supplier' from some callers, while the table name below is
+		// built from 'supplier_order'. Normalise it or the query targets a table that does not exist.
+		if (empty($origin) || $origin == 'order_supplier') {
 			$origin = 'supplier_order';
 		}
 

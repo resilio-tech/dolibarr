@@ -1487,6 +1487,7 @@ if ($resql) {
 
 		$banklinestatic->id = $objp->rowid;
 		$banklinestatic->ref = (string) $objp->rowid;
+		$banklinestatic->amount = $objp->amount;
 
 		print '<tr class="oddeven" '.$backgroundcolor.'>';
 
@@ -1703,9 +1704,11 @@ if ($resql) {
 
 		// Cheque
 		if (!empty($arrayfields['b.fk_bordereau']['checked'])) {
-			$bordereaustatic->fetch($objp->fk_bordereau);
 			print '<td class="nowraponall center">';
-			print $bordereaustatic->getNomUrl();
+			if ($objp->fk_bordereau > 0) {
+				$bordereaustatic->fetch($objp->fk_bordereau);
+				print $bordereaustatic->getNomUrl();
+			}
 			print '</td>';
 			if (!$i) {
 				$totalarray['nbfield']++;
@@ -1899,9 +1902,11 @@ if ($resql) {
 		}
 
 		if (!empty($arrayfields['b.fk_bordereau']['checked'])) {
-			$bordereaustatic->fetch($objp->fk_bordereau);
 			print '<td class="nowraponall center">';
-			print $bordereaustatic->getNomUrl();
+			if ($objp->fk_bordereau > 0) {
+				$bordereaustatic->fetch($objp->fk_bordereau);
+				print $bordereaustatic->getNomUrl();
+			}
 			print '</td>';
 			if (!$i) {
 				$totalarray['nbfield']++;
