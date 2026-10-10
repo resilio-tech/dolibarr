@@ -43,6 +43,7 @@ require_once DOL_DOCUMENT_ROOT .'/recruitment/class/recruitmentcandidature.class
 require_once DOL_DOCUMENT_ROOT .'/societe/class/societe.class.php';                      // Third-Party
 require_once DOL_DOCUMENT_ROOT .'/supplier_proposal/class/supplier_proposal.class.php';  // Supplier Proposal
 require_once DOL_DOCUMENT_ROOT .'/ticket/class/ticket.class.php';                        // Ticket
+require_once DOL_DOCUMENT_ROOT .'/adherents/class/adherent.class.php';             		 // Member/Adherent
 //require_once DOL_DOCUMENT_ROOT .'/expensereport/class/expensereport.class.php';        // Expense Report
 //require_once DOL_DOCUMENT_ROOT .'/holiday/class/holiday.class.php';                    // Holidays (leave request)
 
@@ -1746,10 +1747,6 @@ class EmailCollector extends CommonObject
 			$richarrayofemail = array();
 
 			foreach ($arrayofemail as $imapemail) {
-				if ($nbemailprocessed > 1000) {
-					break; // Do not process more than 1000 email per launch (this is a different protection than maxnbcollectedpercollect)
-				}
-
 				// GET header and overview datas
 				if (getDolGlobalString('MAIN_IMAP_USE_PHPIMAP')) {
 					'@phan-var-force Webklex\PHPIMAP\Message $imapemail';
@@ -1777,6 +1774,10 @@ class EmailCollector extends CommonObject
 
 			$iforemailloop = 0;
 			foreach ($richarrayofemail as $tmpval) {
+				if ($nbemailprocessed > 1000) {
+					break; // Do not process more than 1000 email per launch (this is a different protection than maxnbcollectedpercollect)
+				}
+
 				$iforemailloop++;
 
 				try {
@@ -1798,12 +1799,12 @@ class EmailCollector extends CommonObject
 						$headers['Subject'] = $headers['subject'];
 					}
 
-					$headers['Subject'] = $this->decodeSMTPSubject($headers['Subject']);
+					$headers['Subject'] = $this->decodeSMTPSubject($headers['Subject'] ?? '');
 
 					if (getDolGlobalInt('MAIN_IMAP_USE_PHPIMAP')) {
 						$emailto = (string) $overview['to'];
 					} else {
-						$emailto = $this->decodeSMTPSubject($overview[0]->to);
+						$emailto = $this->decodeSMTPSubject($overview[0]->to ?? '');
 					}
 
 					$operationslog .= '<br>** Process email #'.dol_escape_htmltag((string) $iforemailloop);
@@ -1815,7 +1816,7 @@ class EmailCollector extends CommonObject
 						$msgid = str_replace(array('<', '>'), '', $overview['message_id']);
 					} else {
 						$operationslog .= " - ".dol_escape_htmltag((string) $imapemail);
-						$msgid = str_replace(array('<', '>'), '', $overview[0]->message_id);
+						$msgid = str_replace(array('<', '>'), '', $overview[0]->message_id ?? '');
 					}
 					$operationslog .= " - MsgId: ".$msgid;
 					$operationslog .= " - Date: ".($headers['Date'] ?? $langs->transnoentitiesnoconv("NotFound"));
@@ -2378,11 +2379,11 @@ class EmailCollector extends CommonObject
 								if ($trackid) {
 									$projectfoundby = 'trackid ('.$trackid.')';
 								}
-								if (empty($contactid)) {
+								/*if (empty($contactid)) {
 									$contactid = $projectstatic->fk_contact;
-								}
+								}*/
 								if (empty($thirdpartyid)) {
-									$thirdpartyid = $projectstatic->fk_soc;
+									$thirdpartyid = $projectstatic->socid;
 								}
 							}
 						}
@@ -3149,7 +3150,7 @@ class EmailCollector extends CommonObject
 										include_once DOL_DOCUMENT_ROOT.'/core/class/hookmanager.class.php';
 										$hookmanager = new HookManager($this->db);
 									}
-									$hookmanager->initHooks(array('emailcolector'));
+									$hookmanager->initHooks(array('emailcolector', 'emailcollector'));
 									$parameters = array('arrayobject' => $arrayobject);
 									$reshook = $hookmanager->executeHooks('addmoduletoeamailcollectorjoinpiece', $parameters);    // Note that $action and $object may have been modified by some hooks
 									if ($reshook > 0) {
@@ -3619,7 +3620,7 @@ class EmailCollector extends CommonObject
 									include_once DOL_DOCUMENT_ROOT.'/core/class/hookmanager.class.php';
 									$hookmanager = new HookManager($this->db);
 								}
-								$hookmanager->initHooks(['emailcolector']);
+								$hookmanager->initHooks(array('emailcolector', 'emailcollector'));
 
 								$parameters = array(
 									'connection' =>  $connection,
@@ -3847,9 +3848,9 @@ class EmailCollector extends CommonObject
 	 * getmsg
 	 *
 	 * @param 	IMAP\Connection|resource $mbox   	Structure
-	 * @param 	int				$mid		Message Id / Message Number  Email
-	 * @param 	string			$destdir    Target dir for attachments. Leave blank to parse without writing to disk.
-	 * @return 	-1|1						Return -1 if error, 1 if OK
+	 * @param 	int						$mid		Message Id / Message Number  Email
+	 * @param 	string					$destdir    Target dir for attachments. Leave blank to parse without writing to disk.
+	 * @return 	int <-1,1>							Return -1 if error, 1 if OK
 	 */
 	private function getmsg($mbox, $mid, $destdir = ''): int
 	{
