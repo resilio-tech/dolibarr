@@ -244,6 +244,11 @@ class Propal extends CommonObject
 	public $cond_reglement_doc;
 
 	/**
+	 * @var string Label of the payment terms, used when there is no label for documents
+	 */
+	public $cond_reglement_label;
+
+	/**
 	 * @var string method of payment code
 	 */
 	public $mode_reglement_code;
@@ -1411,6 +1416,15 @@ class Propal extends CommonObject
 						// Set the id on created row
 						$line->id = $result;
 
+						// Keep the extra parameters of the source line (for example the options of subtotal lines): addline() can't
+						// do it when the object is cloned, because the origin it receives is the one of the source line, not the source line
+						if ($result > 0 && !empty($line->extraparams)) {
+							$newline = new PropaleLigne($this->db);
+							$newline->id = $result;
+							$newline->extraparams = $line->extraparams;
+							$newline->setExtraParameters();
+						}
+
 						// Defined the new fk_parent_line
 						if ($result > 0 && $line->product_type == 9) {
 							$fk_parent_line = $result;
@@ -1792,6 +1806,7 @@ class Propal extends CommonObject
 				$this->cond_reglement_id    = $obj->fk_cond_reglement;
 				$this->cond_reglement_code  = $obj->cond_reglement_code;
 				$this->cond_reglement       = $obj->cond_reglement;
+				$this->cond_reglement_label = $obj->cond_reglement;
 				$this->cond_reglement_doc   = $obj->cond_reglement_libelle_doc;
 				$this->deposit_percent      = $obj->deposit_percent;
 

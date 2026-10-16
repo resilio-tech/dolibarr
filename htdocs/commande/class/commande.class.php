@@ -16,6 +16,7 @@
  * Copyright (C) 2024-2026	MDW					<mdeweerd@users.noreply.github.com>
  * Copyright (C) 2024		William Mead		<william.mead@manchenumerique.fr>
  * Copyright (C) 2026		Vincent de Grandpré		<vincent@de-grandpre.quebec>
+ * Copyright (C) 2026		Nick Fragoulis
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -156,6 +157,11 @@ class Commande extends CommonOrder
 	 * @var string Condition payment label
 	 */
 	public $cond_reglement_doc;
+
+	/**
+	 * @var string Label of the payment terms, used when there is no label for documents
+	 */
+	public $cond_reglement_label;
 
 	/**
 	 * @var string|float 	Deposit percent for payment terms. Populated by $CommonObject->setPaymentTerms().
@@ -723,7 +729,7 @@ class Commande extends CommonOrder
 						$mouvP->origin = &$this;
 						$mouvP->setOrigin($this->element, $this->id);
 						// We increment stock of product (and sub-products)
-						$result = $mouvP->reception($user, $this->lines[$i]->fk_product, $idwarehouse, $this->lines[$i]->qty, 0, $langs->trans("OrderBackToDraftInDolibarr", $this->ref));
+						$result = $mouvP->reception($user, $this->lines[$i]->fk_product, $idwarehouse, $this->lines[$i]->qty, 0, $langs->transnoentitiesnoconv("OrderBackToDraftInDolibarr", $this->ref));
 						if ($result < 0) {
 							$error++;
 							$this->setErrorsFromObject($mouvP);
@@ -1168,6 +1174,16 @@ class Commande extends CommonOrder
 						$this->db->rollback();
 						return -1;
 					}
+
+					// Keep the extra parameters of the source line (for example the options of subtotal lines): addline() can't
+					// do it when the object is cloned, because the origin it receives is the one of the source line, not the source line
+					if ($result > 0 && !empty($line->extraparams)) {
+						$newline = new OrderLine($this->db);
+						$newline->id = $result;
+						$newline->extraparams = $line->extraparams;
+						$newline->setExtraParameters();
+					}
+
 					// Defined the new fk_parent_line
 					if ($result > 0 && $line->product_type == 9) {
 						$fk_parent_line = $result;
@@ -1871,7 +1887,7 @@ class Commande extends CommonOrder
 					} else {
 						// Loop on all lines of parent object
 						foreach ($this->lines as $tmpline) {
-							if ($tmpline->id == $origin_id && $tmpline->element = $origin) {
+							if ($tmpline->id == $origin_id && $tmpline->element == $origin) {
 								$this->line->extraparams = $tmpline->extraparams;
 								$this->line->setExtraParameters();
 							}
@@ -2096,6 +2112,7 @@ class Commande extends CommonOrder
 				$this->cond_reglement_id	= $obj->fk_cond_reglement;
 				$this->cond_reglement_code	= $obj->cond_reglement_code;
 				$this->cond_reglement		= $obj->cond_reglement_libelle;
+				$this->cond_reglement_label = $obj->cond_reglement_libelle;
 				$this->cond_reglement_doc = $obj->cond_reglement_libelle_doc;
 				$this->deposit_percent = $obj->deposit_percent;
 				$this->fk_account = $obj->fk_account;
