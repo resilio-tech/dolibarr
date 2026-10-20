@@ -578,4 +578,7 @@ DELETE FROM llx_rights_def WHERE module= 'cron' AND perms = 'execute';
 -- Quick memo: date_archived is a plain data field, not an auto-updated column, so it must be datetime and not timestamp
 ALTER TABLE llx_quickmemo_memo MODIFY COLUMN date_archived datetime DEFAULT NULL;
 
+-- RF or national reference the supplier provides to accept payments
+ALTER TABLE llx_societe_rib ADD COLUMN payment_reference varchar(35) AFTER date_rum;
+
 -- end of migration
