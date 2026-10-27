@@ -590,4 +590,7 @@ ALTER TABLE llx_bank_account ADD COLUMN sepa_local_instrument varchar(4) DEFAULT
 
 ALTER TABLE llx_bank_account ADD COLUMN sepa_transfer_schema_version varchar(2) AFTER sepa_local_instrument;
 
+ALTER TABLE llx_prelevement_demande ADD COLUMN multicurrency_code varchar(3) AFTER amount;
+ALTER TABLE llx_prelevement_demande ADD COLUMN multicurrency_amount double(24,8) AFTER multicurrency_code;
+
 -- end of migration
