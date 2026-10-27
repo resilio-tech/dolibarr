@@ -164,6 +164,7 @@ ErrorCompanyHasDuplicateDefaultBAN=La société avec l'identifiant %s a plus d'u
 ErrorCreditTransferAddressIncomplete=Le fichier de virement a besoin de la ville et du pays de %s : complétez son adresse, puis créez à nouveau l'ordre.
 ErrorCreditTransferQRIBANNeedsQRReference=Le compte bancaire du fournisseur de la facture %s est un QR-IBAN : saisissez la référence QR (27 chiffres) de la QR-facture comme référence de paiement de la facture.
 ErrorCreditTransferQRReferenceNeedsQRIBAN=La référence de paiement de la facture %s est une référence QR, elle ne peut être payée que sur un QR-IBAN : vérifiez le compte bancaire du fournisseur.
+ErrorCreditTransferCurrencyNeedsVersion9=%s est en %s, un fichier de virement SEPA (pain.001.001.03) n'accepte que l'EUR : créez l'ordre depuis un compte bancaire en pain.001.001.09.
 ErrorICSmissing=ICS manquant pour le compte bancaire %s
 TotalAmountOfdirectDebitOrderDiffersFromSumOfLines=Le montant total de l'ordre de prélèvement diffère de la somme des lignes
 WarningSomeDirectDebitOrdersAlreadyExists=Attention : Il y a déjà des ordres de prélèvement automatique en attente (%s) demandés pour un montant de %s
