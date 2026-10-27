@@ -581,4 +581,6 @@ ALTER TABLE llx_quickmemo_memo MODIFY COLUMN date_archived datetime DEFAULT NULL
 -- RF or national reference the supplier provides to accept payments
 ALTER TABLE llx_societe_rib ADD COLUMN payment_reference varchar(35) AFTER date_rum;
 
+ALTER TABLE llx_facture_fourn MODIFY COLUMN payment_reference varchar(35);
+
 -- end of migration
