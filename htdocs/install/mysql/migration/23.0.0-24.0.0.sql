@@ -599,4 +599,7 @@ ALTER TABLE llx_bank_account ADD COLUMN sepa_charge_bearer varchar(4) DEFAULT 'S
 ALTER TABLE llx_prelevement_demande ADD COLUMN multicurrency_code varchar(3) AFTER amount;
 ALTER TABLE llx_prelevement_demande ADD COLUMN multicurrency_amount double(24,8) AFTER multicurrency_code;
 
+ALTER TABLE llx_prelevement ADD COLUMN fk_expensereport integer NULL AFTER fk_salary;
+ALTER TABLE llx_prelevement_demande ADD COLUMN fk_expensereport integer NULL AFTER fk_salary;
+
 -- end of migration
