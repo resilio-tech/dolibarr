@@ -663,8 +663,8 @@ class BonPrelevement extends CommonObject
 					if ($this->type == 'bank-transfer') {
 						if ($type == 'salary') {
 							$amountsperthirdparty[$fac->fk_user][$fac->id] = $facs[$i][1];
-						} elseif (!empty($fac->multicurrency_code) && $fac->multicurrency_code != getDolCurrency()) {
-							$amountincurrency = ($facs[$i][2] !== null ? (float) $facs[$i][2] : $fac->getRequestAmountInInvoiceCurrency((float) $facs[$i][1]));
+						} elseif ($facs[$i][2] !== null && !empty($fac->multicurrency_code) && $fac->multicurrency_code != getDolCurrency()) {
+							$amountincurrency = (float) $facs[$i][2];
 							$multicurrencyamountsperthirdparty[$fac->socid.'-'.$fac->multicurrency_code][$fac->id] = $amountincurrency;
 						} else {
 							$amountsperthirdparty[$fac->socid][$fac->id] = $facs[$i][1];
@@ -2271,11 +2271,6 @@ class BonPrelevement extends CommonObject
 						if ($requestcurrency !== '') {
 							$currency = $requestcurrency;
 							$amountincurrency = $requestamountincurrency;
-						} elseif (empty($forsalary)) {
-							$invoice = new FactureFournisseur($this->db);
-							$invoice->fetch($obj->idfac);
-							$currency = (empty($invoice->multicurrency_code) ? getDolCurrency() : $invoice->multicurrency_code);
-							$amountincurrency = $invoice->getRequestAmountInInvoiceCurrency((float) $obj->somme);
 						}
 						$sepapayment = ($this->sepa_schema_version != '9' || ($currency == 'EUR' && in_array(strtoupper(substr(preg_replace('/\s/', '', $iban), 0, 2)), getCountriesInSEPA())));
 						$paymentgroup = ($sepapayment ? 'SEPA' : $currency);
@@ -3158,7 +3153,7 @@ class BonPrelevement extends CommonObject
 				 $XML_SEPA_INFO .= '					<AdrLine>'.dolEscapeXML(dol_trunc(dol_string_nospecial(dol_string_unaccent(getDolGlobalString('MAIN_INFO_SOCIETE_ZIP').' '.getDolGlobalString('MAIN_INFO_SOCIETE_TOWN')), ' '), 70, 'right', 'UTF-8', 1)).'</AdrLine>'.$CrLf;
 				 $XML_SEPA_INFO .= '				</PstlAdr>'.$CrLf;
 				 $XML_SEPA_INFO .= '			</UltmtCdtr>'.$CrLf;*/
-				$XML_SEPA_INFO .= '			<ChrgBr>' . ($paymentgroup == 'SEPA' ? 'SLEV' : 'SHAR') . '</ChrgBr>' . $CrLf; // Field "Responsible of fees". Must be SLEV for SEPA payments
+				$XML_SEPA_INFO .= '			<ChrgBr>' . ($paymentgroup == 'SEPA' ? 'SLEV' : $account->getSepaChargeBearer()) . '</ChrgBr>' . $CrLf; // Field "Responsible of fees". Must be SLEV for SEPA payments
 				/*$XML_SEPA_INFO .= '			<CdtrSchmeId>'.$CrLf;
 				 $XML_SEPA_INFO .= '				<Id>'.$CrLf;
 				 $XML_SEPA_INFO .= '					<PrvtId>'.$CrLf;

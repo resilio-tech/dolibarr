@@ -688,6 +688,129 @@ class BonVirementTest extends CommonClassTest
 	}
 
 	/**
+	 * testChargeBearerOfTheBankAccount
+	 *
+	 * The payments outside SEPA get the fee payer of the bank account the file is issued from, the SEPA ones stay SLEV.
+	 *
+	 * @return void
+	 */
+	public function testChargeBearerOfTheBankAccount()
+	{
+		global $conf,$user,$langs,$db;
+		$conf = $this->savconf;
+		$user = $this->savuser;
+		$langs = $this->savlangs;
+		$db = $this->savdb;
+
+		require_once DOL_DOCUMENT_ROOT.'/multicurrency/class/multicurrency.class.php';
+		$savmodmulticurrency = $conf->modules['multicurrency'] ?? null;
+		$conf->modules['multicurrency'] = 'multicurrency';
+		if (!MultiCurrency::getIdFromCode($db, 'USD')) {
+			$currency = new MultiCurrency($db);
+			$currency->code = 'USD';
+			$currency->name = 'US Dollar';
+			$this->assertGreaterThan(0, $currency->create($user), 'MultiCurrency::create failed: '.implode(',', $currency->errors));
+		}
+
+		$account = new Account($db);
+		$account->fetch(self::$fkBankAccount);
+		$account->sepa_charge_bearer = 'DEBT';
+		$this->assertGreaterThan(0, $account->update($user), $account->errorsToString());
+
+		try {
+			$account->fetch(self::$fkBankAccount);
+			$this->assertSame('DEBT', $account->getSepaChargeBearer());
+
+			$this->setCompanyAddressForVersion9();
+			$socid = $this->createSwissSupplier('BonVirementTest CompanyF', 'Rue du Lac 3', self::IBAN_CH);
+
+			$facEUR = $this->createValidatedSupplierInvoice($socid, 100.0);
+			$facUSD = $this->createValidatedSupplierInvoice($socid, 100.0, 'USD', 1.1);
+			$demEURId = $this->createPaymentRequest($facEUR, 100.0);
+			$demUSDId = $this->createPaymentRequest($facUSD, 100.0);
+
+			$bon = new BonPrelevement($db);
+			$result = $bon->create('', '', 'real', 'ALL', 0, 0, 'bank-transfer', array($demEURId, $demUSDId), self::$fkBankAccount);
+			$this->assertGreaterThanOrEqual(0, $result, 'BonPrelevement::create() failed: '.$bon->error.' '.implode(', ', $bon->invoice_in_error));
+
+			$xml = simplexml_load_file($bon->filename);
+			$xml->registerXPathNamespace('ns', 'urn:iso:std:iso:20022:tech:xsd:pain.001.001.09');
+			$this->assertSame('SLEV', (string) $xml->xpath('//ns:PmtInf[ns:CdtTrfTxInf/ns:Amt/ns:InstdAmt/@Ccy="EUR"]/ns:ChrgBr')[0]);
+			$this->assertSame('DEBT', (string) $xml->xpath('//ns:PmtInf[ns:CdtTrfTxInf/ns:Amt/ns:InstdAmt/@Ccy="USD"]/ns:ChrgBr')[0]);
+		} finally {
+			$account->sepa_charge_bearer = 'SHAR';
+			$account->update($user);
+			if ($savmodmulticurrency === null) {
+				unset($conf->modules['multicurrency']);
+			} else {
+				$conf->modules['multicurrency'] = $savmodmulticurrency;
+			}
+		}
+	}
+
+	/**
+	 * testRequestWithoutCurrency
+	 *
+	 * A request made before the requests had a currency stays in the company currency, in the file and in the payment
+	 * made when the order is credited.
+	 *
+	 * @return void
+	 */
+	public function testRequestWithoutCurrency()
+	{
+		global $conf,$user,$langs,$db;
+		$conf = $this->savconf;
+		$user = $this->savuser;
+		$langs = $this->savlangs;
+		$db = $this->savdb;
+
+		require_once DOL_DOCUMENT_ROOT.'/multicurrency/class/multicurrency.class.php';
+		$savmodmulticurrency = $conf->modules['multicurrency'] ?? null;
+		$conf->modules['multicurrency'] = 'multicurrency';
+		if (!MultiCurrency::getIdFromCode($db, 'USD')) {
+			$currency = new MultiCurrency($db);
+			$currency->code = 'USD';
+			$currency->name = 'US Dollar';
+			$this->assertGreaterThan(0, $currency->create($user), 'MultiCurrency::create failed: '.implode(',', $currency->errors));
+		}
+
+		try {
+			$this->setCompanyAddressForVersion9();
+			$socid = $this->createSwissSupplier('BonVirementTest CompanyG', 'Rue du Lac 4', self::IBAN_CH);
+
+			$facUSD = $this->createValidatedSupplierInvoice($socid, 100.0, 'USD', 1.1);
+			$demUSDId = $this->createPaymentRequest($facUSD, 100.0);
+			$this->assertNotFalse($db->query("UPDATE ".MAIN_DB_PREFIX."prelevement_demande SET multicurrency_code = NULL, multicurrency_amount = NULL WHERE rowid = ".((int) $demUSDId)));
+
+			$bon = new BonPrelevement($db);
+			$result = $bon->create('', '', 'real', 'ALL', 0, 0, 'bank-transfer', array($demUSDId), self::$fkBankAccount);
+			$this->assertGreaterThanOrEqual(0, $result, 'BonPrelevement::create() failed: '.$bon->error.' '.implode(', ', $bon->invoice_in_error));
+
+			$xml = simplexml_load_file($bon->filename);
+			$xml->registerXPathNamespace('ns', 'urn:iso:std:iso:20022:tech:xsd:pain.001.001.09');
+			$instdamt = $xml->xpath('//ns:InstdAmt');
+			$this->assertCount(1, $instdamt);
+			$this->assertSame(getDolCurrency(), (string) $instdamt[0]['Ccy']);
+			$this->assertSame('100', (string) $instdamt[0]);
+
+			$this->assertGreaterThan(0, $bon->fetch($bon->id));
+			$this->assertGreaterThanOrEqual(0, $bon->set_infotrans($user, dol_now(), 2), (string) $bon->error);
+			$this->assertGreaterThan(0, $bon->fetch($bon->id));
+			$this->assertGreaterThanOrEqual(0, $bon->set_infocredit($user, dol_now()), (string) $bon->error);
+
+			$facUSD->fetch($facUSD->id);
+			$this->assertEquals(1, $facUSD->paid, 'The invoice must be paid by the 100 in company currency of the transfer');
+			$this->assertEquals(0, (float) $facUSD->getRemainToPay());
+		} finally {
+			if ($savmodmulticurrency === null) {
+				unset($conf->modules['multicurrency']);
+			} else {
+				$conf->modules['multicurrency'] = $savmodmulticurrency;
+			}
+		}
+	}
+
+	/**
 	 * testDocumentCurrency
 	 *
 	 * Each transfer goes in the currency of its invoice: the SEPA payments in one block, the others in one block per

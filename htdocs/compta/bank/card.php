@@ -170,6 +170,7 @@ if (empty($reshook)) {
 		$object->cle_rib = trim(GETPOST("cle_rib"));
 		$object->bic = trim(GETPOST("bic"));
 		$object->iban = trim(GETPOST("iban"));
+		$object->sepa_charge_bearer = GETPOST("sepa_charge_bearer", "aZ09");
 		$object->pti_in_ctti = empty(GETPOST("pti_in_ctti")) ? 0 : 1;
 		$object->sepa_transfer_schema_version = GETPOST("sepa_transfer_schema_version", "aZ09");
 
@@ -288,6 +289,7 @@ if (empty($reshook)) {
 		$object->cle_rib = trim(GETPOST("cle_rib"));
 		$object->bic = trim(GETPOST("bic"));
 		$object->iban = trim(GETPOST("iban"));
+		$object->sepa_charge_bearer = GETPOST("sepa_charge_bearer", "aZ09");
 		$object->pti_in_ctti = empty(GETPOST("pti_in_ctti")) ? 0 : 1;
 		$object->sepa_transfer_schema_version = GETPOST("sepa_transfer_schema_version", "aZ09");
 
@@ -394,6 +396,11 @@ $form = new Form($db);
 $formbank = new FormBank($db);
 $formcompany = new FormCompany($db);
 $formaccounting = new FormAccounting($db);
+
+$sepachargebearers = array();
+foreach (Account::SEPA_CHARGE_BEARERS as $chargebearer) {
+	$sepachargebearers[$chargebearer] = $langs->trans("CreditTransferChargeBearer".$chargebearer);
+}
 
 $countrynotdefined = $langs->trans("ErrorSetACountryFirst").' ('.$langs->trans("SeeAbove").')';
 
@@ -620,6 +627,8 @@ if ($action == 'create') {
 
 		if (isModEnabled('paymentbybanktransfer')) {
 			if ($mysoc->isInSEPA()) {
+				print '<tr><td>'.$form->textwithpicto($langs->trans("CreditTransferChargeBearer"), $langs->trans("CreditTransferChargeBearerHelp")).'</td>';
+				print '<td>'.$form->selectarray('sepa_charge_bearer', $sepachargebearers, GETPOSTISSET('sepa_charge_bearer') ? GETPOST('sepa_charge_bearer', 'aZ09') : 'SHAR').'</td></tr>';
 				print '<tr><td>'.$form->textwithpicto($langs->trans("SEPAXMLPlacePaymentTypeInformationInCreditTransfertransactionInformation"), $langs->trans("SEPAXMLPlacePaymentTypeInformationInCreditTransfertransactionInformationHelp")).'</td>';
 				print '<td><input type="checkbox" class="flat" name="pti_in_ctti"'. (empty(GETPOST('pti_in_ctti')) ? '' : ' checked ') . '>';
 				print '</td></tr>';
@@ -883,6 +892,9 @@ if ($action == 'create') {
 					print '</tr>';
 				}
 				if ($mysoc->isInSEPA()) {
+					print '<tr><td>'.$form->textwithpicto($langs->trans("CreditTransferChargeBearer"), $langs->trans("CreditTransferChargeBearerHelp")).'</td><td>';
+					print $sepachargebearers[$object->getSepaChargeBearer()];
+					print "</td></tr>\n";
 					print '<tr><td>'.$form->textwithpicto($langs->trans("SEPAXMLPlacePaymentTypeInformationInCreditTransfertransactionInformation"), $langs->trans("SEPAXMLPlacePaymentTypeInformationInCreditTransfertransactionInformationHelp")).'</td><td>';
 					print(empty($object->pti_in_ctti) ? $langs->trans("No") : $langs->trans("Yes"));
 					print "</td></tr>\n";
@@ -1234,6 +1246,8 @@ if ($action == 'create') {
 					print '<td><input class="minwidth150 maxwidth200onsmartphone" maxlength="32" type="text" class="flat" name="ics_transfer" value="'.(GETPOSTISSET('ics_transfer') ? GETPOST('ics_transfer', 'alphanohtml') : $object->ics_transfer).'"></td></tr>';
 				}
 				if ($mysoc->isInSEPA()) {
+					print '<tr><td>'.$form->textwithpicto($langs->trans("CreditTransferChargeBearer"), $langs->trans("CreditTransferChargeBearerHelp")).'</td>';
+					print '<td>'.$form->selectarray('sepa_charge_bearer', $sepachargebearers, GETPOSTISSET('sepa_charge_bearer') ? GETPOST('sepa_charge_bearer', 'aZ09') : $object->getSepaChargeBearer()).'</td></tr>';
 					print '<tr><td>'.$form->textwithpicto($langs->trans("SEPAXMLPlacePaymentTypeInformationInCreditTransfertransactionInformation"), $langs->trans("SEPAXMLPlacePaymentTypeInformationInCreditTransfertransactionInformationHelp")).'</td>';
 					print '<td><input type="checkbox" class="flat" name="pti_in_ctti"'. ($object->pti_in_ctti ? ' checked ' : '') . '>';
 					print '</td></tr>';
