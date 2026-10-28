@@ -1072,6 +1072,29 @@ class BonVirementTest extends CommonClassTest
 		$this->assertLessThan(0, $expensereport->demande_prelevement($user, 600.0));
 	}
 
+	/**
+	 * testExpenseReportRequestAboveRemainToPay
+	 *
+	 * A credit transfer request cannot be higher than the remaining amount to pay of the expense report.
+	 *
+	 * @return void
+	 */
+	public function testExpenseReportRequestAboveRemainToPay()
+	{
+		global $conf,$user,$langs,$db;
+		$conf = $this->savconf;
+		$user = $this->savuser;
+		$langs = $this->savlangs;
+		$db = $this->savdb;
+
+		$expensereport = $this->createExpenseReport($this->createEmployeeWithBankAccount());
+		$this->assertGreaterThan(0, $expensereport->setValidate($user), (string) $expensereport->error);
+		$this->assertGreaterThan(0, $expensereport->setApproved($user), (string) $expensereport->error);
+
+		$this->assertSame(-4, $expensereport->demande_prelevement($user, 600.01));
+		$this->assertSame(1, $expensereport->demande_prelevement($user, 600.0), (string) $expensereport->error);
+	}
+
 	// ---------------------------------------------------------------------------
 	// Private helpers
 	// ---------------------------------------------------------------------------

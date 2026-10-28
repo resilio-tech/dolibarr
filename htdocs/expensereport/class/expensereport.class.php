@@ -3063,7 +3063,7 @@ class ExpenseReport extends CommonObject
 	public function demande_prelevement(User $fuser, float $amount): int
 	{
 		// phpcs:enable
-		global $conf;
+		global $conf, $langs;
 
 		if ($this->status != self::STATUS_APPROVED || $this->paid != 0) {
 			$this->error = "Status of expense report does not allow this";
@@ -3073,6 +3073,11 @@ class ExpenseReport extends CommonObject
 		if ($amount == 0) {
 			$this->error = 'WithdrawRequestErrorNilAmount';
 			return -1;
+		}
+		$remaintopay = (float) price2num($this->total_ttc - $this->getSumPayments(), 'MT');
+		if ((float) price2num($amount, 'MT') > $remaintopay) {
+			$this->error = $langs->trans('ErrorCreditTransferHigherThanRemainToPay', price($amount, 0, $langs, 1, -1, -1, $conf->currency), price($remaintopay, 0, $langs, 1, -1, -1, $conf->currency));
+			return -4;
 		}
 
 		$sql = "SELECT count(rowid) as nb";
