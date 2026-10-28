@@ -159,3 +159,5 @@ TF_TRIP=Transport
 FailedToSetPaid=Impossible de définir comme payant
 FailedToSetToCancel=Échec de annuler
 NobodyHasPermissionToValidateExpenseReport=Personne n'a l'autorisation de valider les notes de frais
+AmountDebitedFromBankAccount=Montant débité du compte bancaire
+AmountDebitedFromBankAccountHelp=Obligatoire quand le compte bancaire n'est pas en %s : le montant sorti du compte, dans la devise du compte.
