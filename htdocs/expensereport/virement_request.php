@@ -71,7 +71,7 @@ if ($object->id > 0) {
 	}
 }
 
-$permissiontoadd = $user->hasRight('paymentbybanktransfer', 'create');
+$permissiontoadd = $user->hasRight('paymentbybanktransfer', 'create') && $user->hasRight('expensereport', 'to_paid');
 
 
 /*
