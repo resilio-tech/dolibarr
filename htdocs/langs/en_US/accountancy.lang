@@ -646,6 +646,7 @@ ReturnAccount=Return
 Clone=Clone
 AlreadyReturnedAccount=Entry n°%s has already been reversed
 SuccessReturnedAccount=Entry n°%s has been reversed
+CancellationOfAbandonedInvoice=Cancellation of the abandoned invoice
 AccountancyCodeToSet=Accountancy code to set on products/services for
 ACCOUNTING_SPLIT_AMOUNT_ACROSS_YEARS=Split the amount of invoice lines whose service period overlaps several years (accruals)
 Accruals=Accruals
