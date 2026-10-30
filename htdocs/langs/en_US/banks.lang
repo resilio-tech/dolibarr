@@ -222,3 +222,5 @@ CreditTransferChargeBearerHelp=Who pays the bank fees of the credit transfers th
 CreditTransferChargeBearerSHAR=Shared, each side pays the fees of its bank
 CreditTransferChargeBearerDEBT=All the fees are paid by us
 CreditTransferChargeBearerCRED=All the fees are paid by the beneficiary
+AmountOutOfBankAccount=Amount debited from the bank account
+AmountOutOfBankAccountHelp=The amount that left the bank account, in the currency of the account. Required when the account is not in the currency of the invoice.

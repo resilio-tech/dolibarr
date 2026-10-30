@@ -255,7 +255,7 @@ class PaiementFourn extends Paiement
 			$bankaccount = new Account($this->db);
 			$bankaccount->fetch($this->fk_account);
 			$bankcurrencycode = empty($bankaccount->currency_code) ? $conf->currency : $bankaccount->currency_code;
-			if ($currencyofpayment != $bankcurrencycode && $currencyofpayment != $conf->currency && $bankcurrencycode != $conf->currency) {
+			if ($currencyofpayment != $bankcurrencycode && $currencyofpayment != $conf->currency && $bankcurrencycode != $conf->currency && !getDolGlobalInt('ACCOUNTING_BOOK_EXCHANGE_DIFFERENCE')) {
 				$langs->load("errors");
 				$this->error = $langs->trans('ErrorYouTryToPayInvoicesInACurrencyFromBankWithAnotherCurrency', $currencyofpayment, $bankcurrencycode);
 				return -1;
@@ -472,6 +472,7 @@ class PaiementFourn extends Paiement
 			$this->amount = $total;
 			$this->total = $total;
 			$this->multicurrency_amount = $mtotal;
+			$this->multicurrency_currency = (empty($currencyofpayment) ? $conf->currency : $currencyofpayment);
 			$this->db->commit();
 			dol_syslog('PaiementFourn::Create Ok Total = '.$this->amount.', Total currency = '.$this->multicurrency_amount);
 			return $this->id;
