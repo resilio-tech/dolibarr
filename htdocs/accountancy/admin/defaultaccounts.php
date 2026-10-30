@@ -144,6 +144,11 @@ if (getDolGlobalInt('ACCOUNTING_SPLIT_AMOUNT_ACROSS_YEARS')) {
 	$list_account[] = 'ACCOUNTING_ACCOUNT_PREPAID_EXPENSE';
 	$list_account[] = 'ACCOUNTING_SPLIT_AMOUNT_EXCLUDED_ACCOUNTS';
 }
+if (getDolGlobalInt('ACCOUNTING_BOOK_EXCHANGE_DIFFERENCE')) {
+	$list_account[] = '---ExchangeDifference---';
+	$list_account[] = 'ACCOUNTING_ACCOUNT_EXCHANGE_GAIN';
+	$list_account[] = 'ACCOUNTING_ACCOUNT_EXCHANGE_LOSS';
+}
 if (isModEnabled('invoice') || isModEnabled('supplier_invoice')) {
 	$list_account[] = '---Discounts---';
 	$list_account[] = 'ACCOUNTING_ACCOUNT_DISCOUNT_GRANTED';
