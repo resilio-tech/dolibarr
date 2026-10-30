@@ -646,6 +646,7 @@ ReturnAccount=Extourne
 Clone=Clonage
 AlreadyReturnedAccount=L'écriture n°%s a déjà été annulée
 SuccessReturnedAccount=L'écriture n°%s a été extournée
+CancellationOfAbandonedInvoice=Annulation de la facture abandonnée
 AccountancyCodeToSet=compte comptable à configurer sur produits/services pour
 ACCOUNTING_SPLIT_AMOUNT_ACROSS_YEARS=Répartir le montant des lignes de facture dont la période de service couvre plusieurs années (régularisations)
 Accruals=Régularisations
