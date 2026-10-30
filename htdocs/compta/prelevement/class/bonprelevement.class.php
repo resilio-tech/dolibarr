@@ -641,6 +641,7 @@ class BonPrelevement extends CommonObject
 				$amounts = array();
 				$amountsperthirdparty = array();
 				$multicurrencyamountsperthirdparty = array();
+				$expensereportsincurrency = array();
 
 				$facs = $this->getListInvoices(1, $type);
 				if ($this->error) {
@@ -672,6 +673,10 @@ class BonPrelevement extends CommonObject
 							$amountsperthirdparty[$fac->fk_user][$fac->id] = $facs[$i][1];
 						} elseif ($fac instanceof ExpenseReport) {
 							$amountsperthirdparty[$fac->id][$fac->fk_user_author] = $facs[$i][1];
+							if ($facs[$i][2] !== null && $fac->isInForeignCurrency()) {
+								$amountincurrency = (float) $facs[$i][2];
+								$expensereportsincurrency[$fac->id] = array('code' => $fac->multicurrency_code, 'amount' => $amountincurrency);
+							}
 						} elseif ($facs[$i][2] !== null && !empty($fac->multicurrency_code) && $fac->multicurrency_code != getDolCurrency()) {
 							$amountincurrency = (float) $facs[$i][2];
 							$multicurrencyamountsperthirdparty[$fac->socid.'-'.$fac->multicurrency_code][$fac->id] = $amountincurrency;
@@ -703,7 +708,9 @@ class BonPrelevement extends CommonObject
 					if ($type == 'salary') {
 						$amountofdocument = $fac->amount;
 					}
-					if ($amountincurrency !== null) {
+					if ($amountincurrency !== null && $fac instanceof ExpenseReport) {
+						$documentpaid = (price2num($fac->multicurrency_total_ttc - $fac->getSumPayments(1) - $amountincurrency, 'MT') == 0);
+					} elseif ($amountincurrency !== null) {
 						$documentpaid = (price2num($fac->getRemainToPay(1) - $amountincurrency, 'MT') == 0);
 					} else {
 						$documentpaid = (price2num($alreadypayed + $facs[$i][1], 'MT') == price2num($amountofdocument, 'MT'));
@@ -736,6 +743,11 @@ class BonPrelevement extends CommonObject
 						} elseif ($type == 'expensereport') {
 							$paiement = new PaymentExpenseReport($this->db);
 							$paiement->fk_expensereport = $paymentamounts['key'];
+							if (!empty($expensereportsincurrency[$paymentamounts['key']])) {
+								$paiement->multicurrency_code = $expensereportsincurrency[$paymentamounts['key']]['code'];
+								$paiement->multicurrency_amount = $expensereportsincurrency[$paymentamounts['key']]['amount'];
+								$paiement->bank_amount = array_sum($paymentamounts['amounts']);
+							}
 						} else {
 							$paiement = new PaiementFourn($this->db);
 						}
@@ -1325,7 +1337,8 @@ class BonPrelevement extends CommonObject
 			$sql .= " AND sr.type = 'ban'";
 		} else {
 			$sql .= " AND sr.default_rib = 1";
-			$sql .= " AND COALESCE(NULLIF(sr.currency_code, ''), '".$this->db->escape(getDolCurrency())."') = '".$this->db->escape(getDolCurrency())."'";
+			$sql .= " AND COALESCE(NULLIF(sr.currency_code, ''), '".$this->db->escape(getDolCurrency())."') = ";
+			$sql .= ($sourcetype == 'expensereport' ? "COALESCE(NULLIF(f.multicurrency_code, ''), '".$this->db->escape(getDolCurrency())."')" : "'".$this->db->escape(getDolCurrency())."'");
 		}
 		$sql .= " WHERE f.entity IN (".((int) $entity).')';
 		if (!$forusers) {
@@ -2247,10 +2260,12 @@ class BonPrelevement extends CommonObject
 						$documenttable = 'expensereport';
 						$documentuserfield = 'fk_user_author';
 						$documenturl = '/expensereport/card.php?id=';
+						$documentcurrency = "COALESCE(NULLIF(s.multicurrency_code, ''), '".$this->db->escape(getDolCurrency())."')";
 					} else {
 						$documenttable = 'salary';
 						$documentuserfield = 'fk_user';
 						$documenturl = '/salaries/card.php?id=';
+						$documentcurrency = "'".$this->db->escape(getDolCurrency())."'";
 					}
 					$sql = "SELECT u.rowid as userId, u.address, u.zip, u.town, c.code as country_code, CONCAT(u.firstname,' ',u.lastname) as nom,";
 					//$sql .= " pl.code_banque as cb, pl.code_guichet as cg, pl.number as cc, ";
@@ -2271,7 +2286,7 @@ class BonPrelevement extends CommonObject
 					$sql .= " AND s." . $this->db->sanitize($documentuserfield) . " = u.rowid";
 					$sql .= " AND rib.fk_user = s." . $this->db->sanitize($documentuserfield);
 					$sql .= " AND rib.default_rib = 1";
-					$sql .= " AND COALESCE(NULLIF(rib.currency_code, ''), '".$this->db->escape(getDolCurrency())."') = '".$this->db->escape(getDolCurrency())."'";
+					$sql .= " AND COALESCE(NULLIF(rib.currency_code, ''), '".$this->db->escape(getDolCurrency())."') = ".$documentcurrency;
 				} else {
 					$documenturl = '/fourn/facture/card.php?facid=';
 					$sql = "SELECT soc.rowid as socid, soc.code_client as code, soc.address, soc.zip, soc.town, c.code as country_code,";

@@ -229,7 +229,7 @@ class modExpenseReport extends DolibarrModules
 		$this->export_sql_end[$r]  = ' FROM '.MAIN_DB_PREFIX.'expensereport as d';
 		$this->export_sql_end[$r] .= ' LEFT JOIN '.MAIN_DB_PREFIX.'expensereport_extrafields as extra on d.rowid = extra.fk_object';
 		$companycurrency = $this->db->escape(getDolCurrency());
-		$this->export_sql_end[$r] .= " LEFT JOIN ".MAIN_DB_PREFIX."user_rib as user_rib ON user_rib.fk_user = d.fk_user_author AND user_rib.default_rib = 1 AND COALESCE(NULLIF(user_rib.currency_code, ''), '".$companycurrency."') = '".$companycurrency."',";
+		$this->export_sql_end[$r] .= " LEFT JOIN ".MAIN_DB_PREFIX."user_rib as user_rib ON user_rib.fk_user = d.fk_user_author AND user_rib.default_rib = 1 AND COALESCE(NULLIF(user_rib.currency_code, ''), '".$companycurrency."') = COALESCE(NULLIF(d.multicurrency_code, ''), '".$companycurrency."'),";
 		$this->export_sql_end[$r] .= ' '.MAIN_DB_PREFIX.'user as u';
 		$this->export_sql_end[$r] .= ' LEFT JOIN '.MAIN_DB_PREFIX.'user_extrafields as extrau ON u.rowid = extrau.fk_object,';
 		$this->export_sql_end[$r] .= ' '.MAIN_DB_PREFIX.'expensereport_det as ed LEFT JOIN '.MAIN_DB_PREFIX.'c_type_fees as tf ON ed.fk_c_type_fees = tf.id';

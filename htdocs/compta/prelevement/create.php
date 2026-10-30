@@ -608,15 +608,15 @@ if ($resql) {
 				}
 				$userdocument = null;
 			} else {
-				$bac = new UserBankAccount($db);
-				$bac->fetch($obj->soc_rib_id ?? 0, '', $obj->uid);
-
 				if ($sourcetype == 'expensereport') {
 					$userdocument = new ExpenseReport($db);
 				} else {
 					$userdocument = new Salary($db);
 				}
 				$userdocument->fetch($obj->rowid);
+
+				$bac = new UserBankAccount($db);
+				$bac->fetch($obj->soc_rib_id ?? 0, '', $obj->uid, ($userdocument instanceof ExpenseReport ? (string) $userdocument->multicurrency_code : ''));
 			}
 			print '<tr class="oddeven">';
 

@@ -1142,7 +1142,9 @@ class BonVirementTest extends CommonClassTest
 	/**
 	 * testExpenseReportRequestInForeignCurrency
 	 *
-	 * An expense report in another currency than the company currency cannot be requested for a credit transfer.
+	 * The request of an expense report in another currency than the company currency is refused when the employee has
+	 * no bank account in this currency, else it is recorded in this currency with its company currency amount at the
+	 * rate of the expense report.
 	 *
 	 * @return void
 	 */
@@ -1154,16 +1156,78 @@ class BonVirementTest extends CommonClassTest
 		$langs = $this->savlangs;
 		$db = $this->savdb;
 
-		$expensereport = $this->createExpenseReport($this->createEmployeeWithBankAccount());
-		$this->assertGreaterThan(0, $expensereport->setValidate($user), (string) $expensereport->error);
-		$this->assertGreaterThan(0, $expensereport->setApproved($user), (string) $expensereport->error);
-		$foreigncurrency = ($conf->currency == 'EUR' ? 'CHF' : 'EUR');
-		$this->assertTrue((bool) $db->query("UPDATE ".MAIN_DB_PREFIX."expensereport SET multicurrency_code = '".$foreigncurrency."' WHERE rowid = ".((int) $expensereport->id)));
-		$expensereport->fetch($expensereport->id);
+		$employeeid = $this->createEmployeeWithBankAccount();
+		$expensereport = $this->createExpenseReportInForeignCurrency($employeeid);
+		$foreigncurrency = $expensereport->multicurrency_code;
 
-		$this->assertSame(-5, $expensereport->demande_prelevement($user, 600.0));
+		$this->assertSame(-5, $expensereport->demande_prelevement($user, 660.0));
 		$resql = $db->query("SELECT rowid FROM ".MAIN_DB_PREFIX."prelevement_demande WHERE fk_expensereport = ".((int) $expensereport->id));
 		$this->assertEquals(0, $db->num_rows($resql));
+
+		$this->addBankAccountToEmployee($employeeid, self::IBAN_CH, $foreigncurrency);
+		$this->assertSame(-4, $expensereport->demande_prelevement($user, 660.01));
+		$this->assertSame(1, $expensereport->demande_prelevement($user, 330.0), (string) $expensereport->error);
+
+		$resql = $db->query("SELECT amount, multicurrency_code, multicurrency_amount FROM ".MAIN_DB_PREFIX."prelevement_demande WHERE fk_expensereport = ".((int) $expensereport->id));
+		$request = $db->fetch_object($resql);
+		$this->assertSame($foreigncurrency, $request->multicurrency_code);
+		$this->assertEquals(330.0, (float) $request->multicurrency_amount);
+		$this->assertEquals(300.0, (float) $request->amount);
+		$this->assertEquals(330.0, $expensereport->getCreditTransferPendingAmount(1));
+	}
+
+	/**
+	 * testExpenseReportCreditTransferInForeignCurrency
+	 *
+	 * An expense report in another currency than the company currency is sent in its currency to the bank account of
+	 * the employee in this currency, and the order credited pays it in its currency.
+	 *
+	 * @return void
+	 */
+	public function testExpenseReportCreditTransferInForeignCurrency()
+	{
+		global $conf,$user,$langs,$db;
+		$conf = $this->savconf;
+		$user = $this->savuser;
+		$langs = $this->savlangs;
+		$db = $this->savdb;
+
+		$this->setCompanyAddressForVersion9();
+		$employeeid = $this->createEmployeeWithBankAccount();
+		$this->assertTrue((bool) $db->query("UPDATE ".MAIN_DB_PREFIX."user SET town = 'Lausanne', fk_country = 6 WHERE rowid = ".((int) $employeeid)));
+		$expensereport = $this->createExpenseReportInForeignCurrency($employeeid);
+		$foreigncurrency = $expensereport->multicurrency_code;
+		$this->addBankAccountToEmployee($employeeid, self::IBAN_CH, $foreigncurrency);
+		$this->addBankAccountToEmployee($employeeid, self::IBAN_EMPLOYEE_2, $foreigncurrency);
+
+		$this->assertSame(1, $expensereport->demande_prelevement($user, 660.0), (string) $expensereport->error);
+		$resql = $db->query("SELECT rowid, amount FROM ".MAIN_DB_PREFIX."prelevement_demande WHERE fk_expensereport = ".((int) $expensereport->id));
+		$request = $db->fetch_object($resql);
+		$this->assertEquals(600.0, (float) $request->amount, 'The whole remaining amount in the company currency');
+
+		$bon = new BonPrelevement($db);
+		$result = $bon->create('', '', 'real', 'ALL', 0, 0, 'bank-transfer', array((int) $request->rowid), self::$fkBankAccount, 'expensereport');
+		$this->assertEquals(1, $result, 'BonPrelevement::create() failed: '.$bon->error.' '.implode(', ', $bon->invoice_in_error));
+		$this->assertEquals(600.0, (float) $bon->total, 'The order total stays in the company currency');
+		$this->assertXmlValidAgainst($bon->filename, self::XSD_PAIN_001_V9);
+		$xml = simplexml_load_file($bon->filename);
+		$xml->registerXPathNamespace('ns', 'urn:iso:std:iso:20022:tech:xsd:pain.001.001.09');
+		$this->assertCount(1, $xml->xpath('//ns:CdtTrfTxInf'));
+		$this->assertSame('660', (string) $xml->xpath('//ns:InstdAmt[@Ccy="'.$foreigncurrency.'"]')[0]);
+		$this->assertSame(self::IBAN_CH, (string) $xml->xpath('//ns:CdtrAcct/ns:Id/ns:IBAN')[0]);
+
+		$this->assertGreaterThan(0, $bon->fetch($bon->id));
+		$this->assertGreaterThanOrEqual(0, $bon->set_infotrans($user, dol_now(), 2), (string) $bon->error);
+		$this->assertGreaterThan(0, $bon->fetch($bon->id));
+		$this->assertGreaterThanOrEqual(0, $bon->set_infocredit($user, dol_now(), 'expensereport'), (string) $bon->error);
+
+		$expensereport->fetch($expensereport->id);
+		$this->assertEquals(1, $expensereport->paid);
+		$resql = $db->query("SELECT amount, multicurrency_amount, multicurrency_code FROM ".MAIN_DB_PREFIX."payment_expensereport WHERE fk_expensereport = ".((int) $expensereport->id));
+		$payment = $db->fetch_object($resql);
+		$this->assertEquals(600.0, (float) $payment->amount);
+		$this->assertEquals(660.0, (float) $payment->multicurrency_amount);
+		$this->assertSame($foreigncurrency, $payment->multicurrency_code);
 	}
 
 	/**
@@ -1267,6 +1331,26 @@ class BonVirementTest extends CommonClassTest
 		$this->assertGreaterThan(0, $rib->create($user), 'UserBankAccount::create() failed: '.$rib->error);
 
 		return $employeeid;
+	}
+
+	/**
+	 * Creates an approved expense report of 600 in the company currency, 660 in a foreign currency at the rate 1.1.
+	 *
+	 * @param int $userid Row ID of the user the expense report is for
+	 * @return ExpenseReport
+	 */
+	private function createExpenseReportInForeignCurrency(int $userid): ExpenseReport
+	{
+		global $conf, $user, $db;
+
+		$expensereport = $this->createExpenseReport($userid);
+		$this->assertGreaterThan(0, $expensereport->setValidate($user), (string) $expensereport->error);
+		$this->assertGreaterThan(0, $expensereport->setApproved($user), (string) $expensereport->error);
+		$foreigncurrency = ($conf->currency == 'EUR' ? 'CHF' : 'EUR');
+		$this->assertTrue((bool) $db->query("UPDATE ".MAIN_DB_PREFIX."expensereport SET multicurrency_code = '".$foreigncurrency."', multicurrency_tx = 1.1, multicurrency_total_ttc = 660 WHERE rowid = ".((int) $expensereport->id)));
+		$expensereport->fetch($expensereport->id);
+
+		return $expensereport;
 	}
 
 	/**
