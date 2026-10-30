@@ -3116,11 +3116,12 @@ class ExpenseReport extends CommonObject
 	/**
 	 *	Return the amount of the credit transfer requests not processed yet or in a transfer order not credited yet
 	 *
-	 *	@return	float		Amount, or -1 if KO
+	 *	@param	int<0,1>	$multicurrency	1=Return the amount in the currency of the expense report
+	 *	@return	float						Amount, or -1 if KO
 	 */
-	public function getCreditTransferPendingAmount(): float
+	public function getCreditTransferPendingAmount(int $multicurrency = 0): float
 	{
-		$sql = "SELECT SUM(pfd.amount) as amount";
+		$sql = "SELECT SUM(".($multicurrency ? "COALESCE(pfd.multicurrency_amount, pfd.amount)" : "pfd.amount").") as amount";
 		$sql .= " FROM ".$this->db->prefix()."prelevement_demande as pfd";
 		$sql .= " LEFT JOIN ".$this->db->prefix()."prelevement_lignes as pl ON pl.fk_prelevement_demande = pfd.rowid";
 		$sql .= " WHERE pfd.fk_expensereport = ".((int) $this->id);
@@ -3139,10 +3140,10 @@ class ExpenseReport extends CommonObject
 
 	// phpcs:disable PEAR.NamingConventions.ValidFunctionName.ScopeNotCamelCaps
 	/**
-	 *	Create a credit transfer request to pay the expense report to its user
+	 *	Create a credit transfer request to pay the expense report to the bank account of its user in the currency of the expense report
 	 *
 	 *	@param	User	$fuser		User asking the credit transfer
-	 *	@param	float	$amount		Amount we request credit transfer for
+	 *	@param	float	$amount		Amount we request credit transfer for, in the currency of the expense report
 	 *	@return	int					Return integer <0 if KO, 0 if a request already exists, >0 if OK
 	 */
 	public function demande_prelevement(User $fuser, float $amount): int
@@ -3155,21 +3156,23 @@ class ExpenseReport extends CommonObject
 			dol_syslog(get_class($this)."::demande_prelevement ".$this->error, LOG_WARNING);
 			return -3;
 		}
-		if (!empty($this->multicurrency_code) && $this->multicurrency_code != getDolCurrency()) {
-			$this->error = $langs->trans('ErrorCreditTransferExpenseReportNotInCompanyCurrency', $this->multicurrency_code, getDolCurrency());
+		$currency = (empty($this->multicurrency_code) ? getDolCurrency() : $this->multicurrency_code);
+		if (!$this->hasBankAccountForCreditTransfer()) {
+			$this->error = $langs->trans('ErrorCreditTransferNoBankAccountInCurrency', $currency);
 			return -5;
 		}
 		if ($amount == 0) {
 			$this->error = 'WithdrawRequestErrorNilAmount';
 			return -1;
 		}
-		$pending = $this->getCreditTransferPendingAmount();
+		$foreign = (int) $this->isInForeignCurrency();
+		$pending = $this->getCreditTransferPendingAmount($foreign);
 		if ($pending < 0) {
 			return -2;
 		}
-		$remaintopay = (float) price2num($this->total_ttc - $this->getSumPayments() - $pending, 'MT');
+		$remaintopay = (float) price2num(($foreign ? $this->multicurrency_total_ttc : $this->total_ttc) - $this->getSumPayments($foreign) - $pending, 'MT');
 		if ((float) price2num($amount, 'MT') > $remaintopay) {
-			$this->error = $langs->trans('ErrorCreditTransferHigherThanRemainToPay', price($amount, 0, $langs, 1, -1, -1, $conf->currency), price($remaintopay, 0, $langs, 1, -1, -1, $conf->currency));
+			$this->error = $langs->trans('ErrorCreditTransferHigherThanRemainToPay', price($amount, 0, $langs, 1, -1, -1, $currency), price($remaintopay, 0, $langs, 1, -1, -1, $currency));
 			return -4;
 		}
 		if ($pending > 0) {
@@ -3177,12 +3180,19 @@ class ExpenseReport extends CommonObject
 			return 0;
 		}
 
+		$amountincompanycurrency = (float) price2num($amount, 'MT');
+		if ($foreign && $amountincompanycurrency == $remaintopay) {
+			$amountincompanycurrency = (float) price2num($this->total_ttc - $this->getSumPayments(), 'MT');
+		} elseif ($foreign) {
+			$amountincompanycurrency = (float) price2num($amount / $this->getMulticurrencyRate(), 'MT');
+		}
+
 		$sql = 'INSERT INTO '.$this->db->prefix().'prelevement_demande(';
 		$sql .= 'fk_expensereport, amount, multicurrency_code, multicurrency_amount, date_demande, fk_user_demande, sourcetype, type, entity)';
 		$sql .= " VALUES (".((int) $this->id);
-		$sql .= ", ".((float) price2num($amount));
-		$sql .= ", '".$this->db->escape(getDolCurrency())."'";
-		$sql .= ", ".((float) price2num($amount));
+		$sql .= ", ".((float) $amountincompanycurrency);
+		$sql .= ", '".$this->db->escape($currency)."'";
+		$sql .= ", ".((float) price2num($amount, 'MT'));
 		$sql .= ", '".$this->db->idate(dol_now())."'";
 		$sql .= ", ".((int) $fuser->id);
 		$sql .= ", 'expensereport'";
@@ -3197,6 +3207,21 @@ class ExpenseReport extends CommonObject
 		}
 
 		return 1;
+	}
+
+	/**
+	 *	Return if the user of the expense report has a bank account in the currency of the expense report to be paid by credit transfer
+	 *
+	 *	@return	bool
+	 */
+	public function hasBankAccountForCreditTransfer(): bool
+	{
+		require_once DOL_DOCUMENT_ROOT.'/user/class/userbankaccount.class.php';
+
+		$bankaccount = new UserBankAccount($this->db);
+		$bankaccount->fetch(0, '', $this->fk_user_author, (string) $this->multicurrency_code);
+
+		return !empty($bankaccount->id);
 	}
 
 	// phpcs:disable PEAR.NamingConventions.ValidFunctionName.ScopeNotCamelCaps

@@ -116,19 +116,22 @@ $morehtmlref = '<div class="refidno">'.$langs->trans('Employee').' : '.$userstat
 
 dol_banner_tab($object, 'ref', $linkback, 1, 'ref', 'ref', $morehtmlref);
 
-$resteapayer = (float) price2num($object->total_ttc - $object->getSumPayments(), 'MT');
+$foreign = (int) $object->isInForeignCurrency();
+$currency = ($foreign ? $object->multicurrency_code : $conf->currency);
+$totalttc = ($foreign ? $object->multicurrency_total_ttc : $object->total_ttc);
+$resteapayer = (float) price2num($totalttc - $object->getSumPayments($foreign), 'MT');
 
 print '<div class="fichecenter">';
 print '<div class="underbanner clearboth"></div>';
 print '<table class="border centpercent tableforfield">';
-print '<tr><td class="titlefieldmiddle">'.$langs->trans("AmountTTC").'</td><td><span class="amount">'.price($object->total_ttc, 0, $langs, 1, -1, -1, $conf->currency).'</span></td></tr>';
-print '<tr><td>'.$langs->trans("RemainderToPay").'</td><td><span class="amount">'.price($resteapayer, 0, $langs, 1, -1, -1, $conf->currency).'</span></td></tr>';
+print '<tr><td class="titlefieldmiddle">'.$langs->trans("AmountTTC").'</td><td><span class="amount">'.price($totalttc, 0, $langs, 1, -1, -1, $currency).'</span></td></tr>';
+print '<tr><td>'.$langs->trans("RemainderToPay").'</td><td><span class="amount">'.price($resteapayer, 0, $langs, 1, -1, -1, $currency).'</span></td></tr>';
 print '</table>';
 print '</div>';
 
 print dol_get_fiche_end();
 
-$sql = "SELECT pfd.rowid, pfd.traite, pfd.date_demande, pfd.date_traite, pfd.amount, pfd.fk_prelevement_bons,";
+$sql = "SELECT pfd.rowid, pfd.traite, pfd.date_demande, pfd.date_traite, pfd.amount, pfd.multicurrency_amount, pfd.fk_prelevement_bons,";
 $sql .= " pb.ref, pb.statut as status, pb.amount as pb_amount,";
 $sql .= " u.rowid as user_id, u.email, u.lastname, u.firstname, u.login, u.statut as user_status";
 $sql .= " FROM ".MAIN_DB_PREFIX."prelevement_demande as pfd";
@@ -153,8 +156,8 @@ $buttonlabel = $langs->trans("MakeTransferRequest");
 print '<div class="tabsAction">'."\n";
 if ($object->status != ExpenseReport::STATUS_APPROVED || $object->paid) {
 	print '<a class="butActionRefused classfortooltip" href="#" title="'.dol_escape_htmltag($langs->trans("StatusOfRefMustBe", $object->ref, $langs->transnoentitiesnoconv("Approved"))).'">'.$buttonlabel.'</a>';
-} elseif (!empty($object->multicurrency_code) && $object->multicurrency_code != getDolCurrency()) {
-	print '<a class="butActionRefused classfortooltip" href="#" title="'.dol_escape_htmltag($langs->trans("ErrorCreditTransferExpenseReportNotInCompanyCurrency", $object->multicurrency_code, getDolCurrency())).'">'.$buttonlabel.'</a>';
+} elseif (!$object->hasBankAccountForCreditTransfer()) {
+	print '<a class="butActionRefused classfortooltip" href="#" title="'.dol_escape_htmltag($langs->trans("ErrorCreditTransferNoBankAccountInCurrency", $currency)).'">'.$buttonlabel.'</a>';
 } elseif ($pending != 0) {
 	print '<a class="butActionRefused classfortooltip" href="#" title="'.dol_escape_htmltag($langs->trans("RequestAlreadyDone")).'">'.$buttonlabel.'</a>';
 } elseif ($resteapayer <= 0) {
@@ -166,7 +169,7 @@ if ($object->status != ExpenseReport::STATUS_APPROVED || $object->paid) {
 	print '<input type="hidden" name="token" value="'.newToken().'" />';
 	print '<input type="hidden" name="action" value="add" />';
 	print '<label for="withdraw_request_amount">'.$langs->trans('BankTransferAmount').' </label>';
-	print '<input type="text" id="withdraw_request_amount" name="request_transfer" value="'.price($resteapayer, 0, $langs, 1, -1, -1).'" size="9" />';
+	print '<input type="text" id="withdraw_request_amount" name="request_transfer" value="'.price($resteapayer, 0, $langs, 1, -1, -1).'" size="9" /> '.dol_escape_htmltag($currency).' ';
 	print '<input type="submit" class="butAction" value="'.$buttonlabel.'" />';
 	print '</form>';
 }
@@ -196,7 +199,7 @@ foreach ($requests as $obj) {
 	print '<tr class="oddeven">';
 	print '<td class="nowraponall">'.dol_print_date($db->jdate($obj->date_demande), 'dayhour')."</td>\n";
 	print '<td class="tdoverflowmax125">'.$tmpuser->getNomUrl(-1, '', 0, 0, 0, 0, 'login').'</td>';
-	print '<td class="center"><span class="amount">'.price($obj->amount).'</span></td>';
+	print '<td class="center"><span class="amount">'.price($foreign ? $obj->multicurrency_amount : $obj->amount, 0, $langs, 1, -1, -1, $currency).'</span></td>';
 	if ($obj->traite) {
 		print '<td class="center nowraponall">'.dol_print_date($db->jdate($obj->date_traite), 'dayhour', 'tzuserrel')."</td>\n";
 	} else {
