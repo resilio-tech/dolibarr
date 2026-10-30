@@ -273,4 +273,310 @@ class ExpenseReportTest extends CommonClassTest
 
 		$expensereport->delete($user);
 	}
+
+	/**
+	 * testExpenseReportInForeignCurrency
+	 *
+	 * Lines typed in the currency of the expense report are converted to the company currency with its rate,
+	 * and a new rate converts them again.
+	 *
+	 * @return	void
+	 */
+	public function testExpenseReportInForeignCurrency()
+	{
+		global $conf,$user,$langs,$db;
+		$conf = $this->savconf;
+		$user = $this->savuser;
+		$langs = $this->savlangs;
+		$db = $this->savdb;
+
+		$expensereport = new ExpenseReport($db);
+		$expensereport->initAsSpecimen();
+		$expensereport->lines = array();
+		$expensereport->status = 0;
+		$expensereport->fk_statut = 0;
+		$expensereport->multicurrency_code = 'USD';
+		$expensereport->multicurrency_tx = 0.8;
+		$this->assertGreaterThan(0, $expensereport->create($user), (string) $expensereport->error);
+
+		$resql = $db->query("SELECT id FROM ".MAIN_DB_PREFIX."c_type_fees WHERE active = 1 ORDER BY id LIMIT 1");
+		$typefeesid = (int) $db->fetch_object($resql)->id;
+
+		$expensereport->fetch($expensereport->id);
+		$lineid = $expensereport->addline(1, 0, $typefeesid, 0, dol_now(), 'Taxi', 0, 0, 0, 0, 100);
+		$this->assertGreaterThan(0, $lineid, (string) $expensereport->error);
+
+		$expensereport->fetch($expensereport->id);
+		$this->assertEquals(100, (float) $expensereport->lines[0]->multicurrency_total_ttc);
+		$this->assertEquals(125, (float) $expensereport->lines[0]->total_ttc);
+		$this->assertEquals(100, (float) $expensereport->multicurrency_total_ttc);
+		$this->assertEquals(125, (float) $expensereport->total_ttc);
+
+		$this->assertGreaterThan(0, $expensereport->updateline($lineid, $typefeesid, 0, 0, 'Taxi', 1, 0, dol_now(), $expensereport->id, 0, 0, 0, 50), (string) $expensereport->error);
+		$expensereport->fetch($expensereport->id);
+		$this->assertEquals(50, (float) $expensereport->multicurrency_total_ttc);
+		$this->assertEquals(62.5, (float) $expensereport->total_ttc);
+
+		$this->assertGreaterThan(0, $expensereport->setMulticurrencyRate(0.5, 1));
+		$expensereport->fetch($expensereport->id);
+		$this->assertEquals(50, (float) $expensereport->multicurrency_total_ttc, 'The amounts typed in the currency of the report are kept');
+		$this->assertEquals(100, (float) $expensereport->total_ttc, 'The amounts in company currency follow the new rate');
+
+		$expensereport->delete($user);
+	}
+
+	/**
+	 * testExpenseReportInCompanyCurrency
+	 *
+	 * An expense report created with its lines and no currency is in the company currency, with the same amounts in both.
+	 *
+	 * @return	void
+	 */
+	public function testExpenseReportInCompanyCurrency()
+	{
+		global $conf,$user,$langs,$db;
+		$conf = $this->savconf;
+		$user = $this->savuser;
+		$langs = $this->savlangs;
+		$db = $this->savdb;
+
+		$expensereport = new ExpenseReport($db);
+		$expensereport->initAsSpecimen();
+		$expensereport->status = 0;
+		$expensereport->fk_statut = 0;
+		$this->assertGreaterThan(0, $expensereport->create($user), (string) $expensereport->error);
+
+		$expensereport->fetch($expensereport->id);
+		$this->assertSame($conf->currency, $expensereport->multicurrency_code);
+		$this->assertGreaterThan(0, (float) $expensereport->total_ttc);
+		$this->assertEquals((float) $expensereport->total_ttc, (float) $expensereport->multicurrency_total_ttc);
+
+		$expensereport->delete($user);
+	}
+
+	/**
+	 * testExpenseReportPaymentInCurrency
+	 *
+	 * A payment settles the expense report in its currency. From an account in that currency the bank gets the amount
+	 * of the payment, from an account in another currency it gets the amount really debited, that is required.
+	 *
+	 * @return	void
+	 */
+	public function testExpenseReportPaymentInCurrency()
+	{
+		global $conf,$user,$langs,$db;
+		$conf = $this->savconf;
+		$user = $this->savuser;
+		$langs = $this->savlangs;
+		$db = $this->savdb;
+
+		require_once DOL_DOCUMENT_ROOT.'/expensereport/class/paymentexpensereport.class.php';
+		require_once DOL_DOCUMENT_ROOT.'/compta/bank/class/account.class.php';
+
+		$expensereport = new ExpenseReport($db);
+		$expensereport->initAsSpecimen();
+		$expensereport->lines = array();
+		$expensereport->status = 0;
+		$expensereport->fk_statut = 0;
+		$expensereport->multicurrency_code = 'USD';
+		$expensereport->multicurrency_tx = 0.8;
+		$this->assertGreaterThan(0, $expensereport->create($user), (string) $expensereport->error);
+
+		$accountusd = $this->createBankAccount('USD');
+		$accountcompany = $this->createBankAccount($conf->currency);
+
+		$payment = new PaymentExpenseReport($db);
+		$payment->fk_expensereport = $expensereport->id;
+		$payment->datep = dol_now();
+		$payment->amounts = array($user->id => 50);
+		$payment->multicurrency_amount = 40;
+		$payment->multicurrency_code = 'USD';
+		$payment->fk_typepayment = 2;
+		$this->assertGreaterThan(0, $payment->create($user), (string) $payment->error);
+		$this->assertGreaterThan(0, $payment->addPaymentToBank($user, 'payment_expensereport', '(ExpenseReportPayment)', $accountusd, '', ''), (string) $payment->error);
+
+		$resql = $db->query("SELECT b.amount, b.amount_main_currency FROM ".MAIN_DB_PREFIX."bank as b, ".MAIN_DB_PREFIX."payment_expensereport as p WHERE p.fk_bank = b.rowid AND p.rowid = ".((int) $payment->id));
+		$bankline = $db->fetch_object($resql);
+		$this->assertEquals(-40, (float) $bankline->amount, 'The USD account is debited of the USD of the payment');
+		$this->assertEquals(-50, (float) $bankline->amount_main_currency);
+		$this->assertEquals(40, (float) $expensereport->getSumPayments(1));
+		$this->assertEquals(50, (float) $expensereport->getSumPayments());
+
+		$payment2 = new PaymentExpenseReport($db);
+		$payment2->fk_expensereport = $expensereport->id;
+		$payment2->datep = dol_now();
+		$payment2->amounts = array($user->id => 25);
+		$payment2->multicurrency_amount = 20;
+		$payment2->multicurrency_code = 'USD';
+		$payment2->fk_typepayment = 2;
+		$this->assertGreaterThan(0, $payment2->create($user), (string) $payment2->error);
+		$this->assertLessThan(0, $payment2->addPaymentToBank($user, 'payment_expensereport', '(ExpenseReportPayment)', $accountcompany, '', ''), 'The amount debited is required from an account in another currency');
+
+		$payment2->bank_amount = 26.5;
+		$this->assertGreaterThan(0, $payment2->addPaymentToBank($user, 'payment_expensereport', '(ExpenseReportPayment)', $accountcompany, '', ''), (string) $payment2->error);
+		$resql = $db->query("SELECT b.amount, b.amount_main_currency FROM ".MAIN_DB_PREFIX."bank as b, ".MAIN_DB_PREFIX."payment_expensereport as p WHERE p.fk_bank = b.rowid AND p.rowid = ".((int) $payment2->id));
+		$bankline = $db->fetch_object($resql);
+		$this->assertEquals(-26.5, (float) $bankline->amount, 'The company currency account is debited of the amount really debited');
+		$this->assertNull($bankline->amount_main_currency);
+	}
+
+	/**
+	 * testExpenseReportSetMulticurrencyCodeUsesRateOfStartDate
+	 *
+	 * Changing the currency of a draft takes the same rate as at creation, and the currency and the rate are only changed on a draft.
+	 *
+	 * @return	void
+	 */
+	public function testExpenseReportSetMulticurrencyCodeUsesRateOfStartDate()
+	{
+		global $conf,$user,$langs,$db;
+		$conf = $this->savconf;
+		$user = $this->savuser;
+		$langs = $this->savlangs;
+		$db = $this->savdb;
+
+		require_once DOL_DOCUMENT_ROOT.'/multicurrency/class/multicurrency.class.php';
+		require_once DOL_DOCUMENT_ROOT.'/multicurrency/class/currencyrate.class.php';
+
+		$savoption = getDolGlobalString('MULTICURRENCY_USE_RATE_ON_DOCUMENT_DATE');
+		$conf->global->MULTICURRENCY_USE_RATE_ON_DOCUMENT_DATE = 1;
+
+		$currency = new MultiCurrency($db);
+		$currency->code = 'XTS';
+		$currency->name = 'ExpenseReportTest';
+		$this->assertGreaterThan(0, $currency->create($user), $currency->errorsToString());
+		foreach (array('2021-03-15' => 2, '2021-05-15' => 4) as $day => $value) {
+			$rate = new CurrencyRate($db);
+			$rate->rate = $value;
+			$rate->date_sync = dol_stringtotime($day.' 12:00:00');
+			$this->assertGreaterThan(0, $rate->create($user, $currency->id));
+		}
+
+		$expensereport = new ExpenseReport($db);
+		$expensereport->initAsSpecimen();
+		$expensereport->lines = array();
+		$expensereport->status = 0;
+		$expensereport->fk_statut = 0;
+		$expensereport->date_debut = dol_stringtotime('2021-03-20 12:00:00');
+		$expensereport->date_fin = $expensereport->date_debut;
+		$this->assertGreaterThan(0, $expensereport->create($user), (string) $expensereport->error);
+		$resql = $db->query("SELECT id FROM ".MAIN_DB_PREFIX."c_type_fees WHERE active = 1 ORDER BY id LIMIT 1");
+		$typefeesid = (int) $db->fetch_object($resql)->id;
+		$expensereport->fetch($expensereport->id);
+		$this->assertGreaterThan(0, $expensereport->addline(1, 100, $typefeesid, 0, $expensereport->date_debut, 'Taxi'), (string) $expensereport->error);
+		$expensereport->fetch($expensereport->id);
+
+		$this->assertGreaterThan(0, $expensereport->setMulticurrencyCode('XTS'), (string) $expensereport->error);
+		$expensereport->fetch($expensereport->id);
+		$conf->global->MULTICURRENCY_USE_RATE_ON_DOCUMENT_DATE = $savoption;
+		$this->assertEquals(2, (float) $expensereport->multicurrency_tx, 'The rate of the start date of the report is used');
+		$this->assertEquals($currency->id, (int) $expensereport->fk_multicurrency);
+		$this->assertEquals(100, (float) $expensereport->total_ttc);
+		$this->assertEquals(200, (float) $expensereport->multicurrency_total_ttc);
+
+		$db->query("UPDATE ".MAIN_DB_PREFIX."expensereport SET fk_statut = ".ExpenseReport::STATUS_VALIDATED." WHERE rowid = ".((int) $expensereport->id));
+		$expensereport->fetch($expensereport->id);
+		$this->assertLessThan(0, $expensereport->setMulticurrencyRate(3, 1), 'The rate of a validated report is not changed');
+		$this->assertLessThan(0, $expensereport->setMulticurrencyCode('USD'), 'The currency of a validated report is not changed');
+		$expensereport->fetch($expensereport->id);
+		$this->assertEquals('XTS', $expensereport->multicurrency_code);
+		$this->assertEquals(2, (float) $expensereport->multicurrency_tx);
+	}
+
+	/**
+	 * testExpenseReportApiPaymentInCurrency
+	 *
+	 * A payment created through the API takes its amounts in the currency of the expense report, like the payment page.
+	 *
+	 * @return	void
+	 */
+	public function testExpenseReportApiPaymentInCurrency()
+	{
+		global $conf,$user,$langs,$db;
+		$conf = $this->savconf;
+		$user = $this->savuser;
+		$langs = $this->savlangs;
+		$db = $this->savdb;
+
+		require_once DOL_DOCUMENT_ROOT.'/api/class/api_access.class.php';
+		require_once DOL_DOCUMENT_ROOT.'/api/class/api.class.php';
+		require_once DOL_DOCUMENT_ROOT.'/expensereport/class/api_expensereports.class.php';
+		require_once DOL_DOCUMENT_ROOT.'/compta/bank/class/account.class.php';
+		$apiuser = clone $user;
+		$apiuser->rights = clone $user->rights;
+		$apiuser->rights->expensereport = new stdClass();
+		$apiuser->rights->expensereport->to_paid = 1;
+		DolibarrApiAccess::$user = $apiuser;
+
+		$expensereport = new ExpenseReport($db);
+		$expensereport->initAsSpecimen();
+		$expensereport->lines = array();
+		$expensereport->status = 0;
+		$expensereport->fk_statut = 0;
+		$expensereport->multicurrency_code = 'USD';
+		$expensereport->multicurrency_tx = 0.8;
+		$this->assertGreaterThan(0, $expensereport->create($user), (string) $expensereport->error);
+		$resql = $db->query("SELECT id FROM ".MAIN_DB_PREFIX."c_type_fees WHERE active = 1 ORDER BY id LIMIT 1");
+		$typefeesid = (int) $db->fetch_object($resql)->id;
+		$expensereport->fetch($expensereport->id);
+		$this->assertGreaterThan(0, $expensereport->addline(1, 0, $typefeesid, 0, dol_now(), 'Taxi', 0, 0, 0, 0, 100), (string) $expensereport->error);
+		$db->query("UPDATE ".MAIN_DB_PREFIX."expensereport SET fk_statut = ".ExpenseReport::STATUS_APPROVED." WHERE rowid = ".((int) $expensereport->id));
+
+		$accountusd = $this->createBankAccount('USD');
+		$accountcompany = $this->createBankAccount($conf->currency);
+		$api = new ExpenseReports();
+
+		try {
+			$api->addPayment($expensereport->id, array('fk_typepayment' => 2, 'datep' => dol_now(), 'amounts' => array($user->id => 101), 'accountid' => $accountusd));
+			$this->fail('A payment higher than the remainder in the currency of the report is refused');
+		} catch (Luracast\Restler\RestException $e) {
+			$this->assertStringContainsString('remainder to pay (100 USD)', $e->getMessage());
+		}
+		try {
+			$api->addPayment($expensereport->id, array('fk_typepayment' => 2, 'datep' => dol_now(), 'amounts' => array($user->id => 20), 'accountid' => $accountcompany, 'bank_amount' => 'abc'));
+			$this->fail('A bank_amount that is not a positive number is refused');
+		} catch (Luracast\Restler\RestException $e) {
+			$this->assertEquals(400, $e->getCode());
+		}
+
+		$paymentid = $api->addPayment($expensereport->id, array('fk_typepayment' => 2, 'datep' => dol_now(), 'amounts' => array($user->id => 40), 'accountid' => $accountusd));
+		$payment = new PaymentExpenseReport($db);
+		$payment->fetch($paymentid);
+		$this->assertEquals(40, (float) $payment->multicurrency_amount);
+		$this->assertEquals(50, (float) $payment->amount);
+		$this->assertSame('USD', $payment->multicurrency_code);
+
+		$paymentid = $api->addPayment($expensereport->id, array('fk_typepayment' => 2, 'datep' => dol_now(), 'amounts' => array($user->id => 60), 'accountid' => $accountcompany, 'bank_amount' => '76.5'));
+		$payment = new PaymentExpenseReport($db);
+		$payment->fetch($paymentid);
+		$this->assertEquals(60, (float) $payment->multicurrency_amount);
+		$this->assertEquals(75, (float) $payment->amount, 'The last payment settles the remainder in company currency');
+		$resql = $db->query("SELECT b.amount FROM ".MAIN_DB_PREFIX."bank as b WHERE b.rowid = ".((int) $payment->fk_bank));
+		$this->assertEquals(-76.5, (float) $db->fetch_object($resql)->amount);
+		$expensereport->fetch($expensereport->id);
+		$this->assertEquals(ExpenseReport::STATUS_CLOSED, $expensereport->status);
+	}
+
+	/**
+	 * Create a bank account in a currency
+	 *
+	 * @param	string	$currency	Currency code
+	 * @return	int					Id of the bank account
+	 */
+	private function createBankAccount(string $currency): int
+	{
+		global $user, $db;
+
+		$account = new Account($db);
+		$account->ref = 'ER'.$currency.substr(uniqid(), -6);
+		$account->label = $account->ref;
+		$account->type = Account::TYPE_CURRENT;
+		$account->country_id = 1;
+		$account->date_solde = dol_now();
+		$account->currency_code = $currency;
+		$id = $account->create($user);
+		$this->assertGreaterThan(0, $id, $account->errorsToString());
+
+		return $id;
+	}
 }
