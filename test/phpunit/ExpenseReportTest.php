@@ -675,6 +675,84 @@ class ExpenseReportTest extends CommonClassTest
 	}
 
 	/**
+	 * testExpenseReportPaymentWithExchangeDifference
+	 *
+	 * When the exchange difference is booked, an account in the currency of the expense report gets the amount of the payment
+	 * at the rate of the day, and an account in the company currency gets the amount really debited, that is required.
+	 *
+	 * @return	void
+	 */
+	public function testExpenseReportPaymentWithExchangeDifference()
+	{
+		global $conf,$user,$langs,$db;
+		$conf = $this->savconf;
+		$user = $this->savuser;
+		$langs = $this->savlangs;
+		$db = $this->savdb;
+
+		require_once DOL_DOCUMENT_ROOT.'/expensereport/class/paymentexpensereport.class.php';
+		require_once DOL_DOCUMENT_ROOT.'/compta/bank/class/account.class.php';
+		require_once DOL_DOCUMENT_ROOT.'/multicurrency/class/multicurrency.class.php';
+		require_once DOL_DOCUMENT_ROOT.'/multicurrency/class/currencyrate.class.php';
+
+		$conf->global->ACCOUNTING_BOOK_EXCHANGE_DIFFERENCE = 1;
+
+		$currency = new MultiCurrency($db);
+		$currency->code = 'XBA';
+		$currency->name = 'ExpenseReportExchangeDifferenceTest';
+		$this->assertGreaterThan(0, $currency->create($user), $currency->errorsToString());
+		$rate = new CurrencyRate($db);
+		$rate->rate = 650 / 600;
+		$this->assertGreaterThan(0, $rate->create($user, $currency->id));
+
+		$expensereport = new ExpenseReport($db);
+		$expensereport->initAsSpecimen();
+		$expensereport->lines = array();
+		$expensereport->status = 0;
+		$expensereport->fk_statut = 0;
+		$expensereport->multicurrency_code = 'XBA';
+		$expensereport->multicurrency_tx = 650 / 610;
+		$this->assertGreaterThan(0, $expensereport->create($user), (string) $expensereport->error);
+
+		$accountxts = $this->createBankAccount('XBA');
+		$accountcompany = $this->createBankAccount($conf->currency);
+
+		$payment = new PaymentExpenseReport($db);
+		$payment->fk_expensereport = $expensereport->id;
+		$payment->datep = dol_now();
+		$payment->amounts = array($user->id => 610);
+		$payment->multicurrency_amount = 650;
+		$payment->multicurrency_code = 'XBA';
+		$payment->fk_typepayment = 2;
+		$this->assertGreaterThan(0, $payment->create($user), (string) $payment->error);
+		$this->assertGreaterThan(0, $payment->addPaymentToBank($user, 'payment_expensereport', '(ExpenseReportPayment)', $accountxts, '', ''), (string) $payment->error);
+
+		$resql = $db->query("SELECT b.amount, b.amount_main_currency FROM ".MAIN_DB_PREFIX."bank as b, ".MAIN_DB_PREFIX."payment_expensereport as p WHERE p.fk_bank = b.rowid AND p.rowid = ".((int) $payment->id));
+		$bankline = $db->fetch_object($resql);
+		$this->assertEquals(-650, (float) $bankline->amount);
+		$this->assertEquals(-600, (float) $bankline->amount_main_currency, 'The amount debited is converted at the rate of the day, not at the rate of the expense report');
+
+		$payment2 = new PaymentExpenseReport($db);
+		$payment2->fk_expensereport = $expensereport->id;
+		$payment2->datep = dol_now();
+		$payment2->amounts = array($user->id => 61);
+		$payment2->multicurrency_amount = 65;
+		$payment2->multicurrency_code = 'XBA';
+		$payment2->fk_typepayment = 2;
+		$this->assertGreaterThan(0, $payment2->create($user), (string) $payment2->error);
+		$this->assertLessThan(0, $payment2->addPaymentToBank($user, 'payment_expensereport', '(ExpenseReportPayment)', $accountcompany, '', ''), 'The amount debited is required from a company currency account');
+
+		$payment2->bank_amount = 62;
+		$this->assertGreaterThan(0, $payment2->addPaymentToBank($user, 'payment_expensereport', '(ExpenseReportPayment)', $accountcompany, '', ''), (string) $payment2->error);
+		$resql = $db->query("SELECT b.amount, b.amount_main_currency FROM ".MAIN_DB_PREFIX."bank as b, ".MAIN_DB_PREFIX."payment_expensereport as p WHERE p.fk_bank = b.rowid AND p.rowid = ".((int) $payment2->id));
+		$bankline = $db->fetch_object($resql);
+		$this->assertEquals(-62, (float) $bankline->amount, 'The company currency account is debited of the amount really debited');
+		$this->assertNull($bankline->amount_main_currency);
+
+		$conf->global->ACCOUNTING_BOOK_EXCHANGE_DIFFERENCE = 0;
+	}
+
+	/**
 	 * Create a bank account in a currency
 	 *
 	 * @param	string	$currency	Currency code

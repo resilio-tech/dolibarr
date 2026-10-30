@@ -331,7 +331,7 @@ if ($action == 'create' || empty($action)) {
 		print '</td></tr>';
 
 		print '<tr>';
-		print '<td>'.$form->textwithpicto($langs->trans('AmountDebitedFromBankAccount'), $langs->trans('AmountDebitedFromBankAccountHelp', implode(', ', array_unique(array($currency, $conf->currency))))).'</td>';
+		print '<td>'.$form->textwithpicto($langs->trans('AmountDebitedFromBankAccount'), $langs->trans('AmountDebitedFromBankAccountHelp', implode(', ', array_unique(getDolGlobalInt('ACCOUNTING_BOOK_EXCHANGE_DIFFERENCE') ? array($currency) : array($currency, $conf->currency))))).'</td>';
 		print '<td colspan="2"><input type="text" class="width75" name="bank_amount" value="'.dol_escape_htmltag(GETPOST('bank_amount', 'alpha')).'"></td>';
 		print '</tr>';
 	}
