@@ -999,7 +999,7 @@ class ExpenseReports extends DolibarrApi
 	/**
 	 * Create a payment for an expense report
 	 *
-	 * The amounts are in the currency of the expense report. multicurrency_tx is the rate of the reimbursement, taken by the expense report at its first payment. From a bank account in neither the currency of the expense report nor the company one, bank_amount is the amount debited from the account, in its currency.
+	 * The amounts are in the currency of the expense report. multicurrency_tx is the rate of the reimbursement, taken by the expense report at its first payment. From a bank account in neither the currency of the expense report nor the company one, or in another currency than the expense report when the exchange difference is booked in accounting, bank_amount is the amount debited from the account, in its currency.
 	 *
 	 * @since	20.0.0	Initial implementation
 	 *
