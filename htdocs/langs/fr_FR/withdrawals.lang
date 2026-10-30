@@ -184,3 +184,4 @@ NbOfInvoiceToPayByBankTransferForExpenseReports=Nombre de notes de frais qualifi
 ExpenseReportWaitingWithdraw=Notes de frais en attente de paiement par virement bancaire
 NoExpenseReportToWithdraw=Aucune note de frais en attente de '%s'. Allez sur l'onglet '%s' de la note de frais pour faire une demande.
 ErrorCreditTransferHigherThanRemainToPay=Le virement demandé (%s) est supérieur au reste à payer (%s)
+ErrorCreditTransferExpenseReportNotInCompanyCurrency=La note de frais est en %s, un virement ne peut être demandé que pour une note de frais dans la devise de la société (%s)

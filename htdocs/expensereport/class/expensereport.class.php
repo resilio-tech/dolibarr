@@ -3094,6 +3094,10 @@ class ExpenseReport extends CommonObject
 			dol_syslog(get_class($this)."::demande_prelevement ".$this->error, LOG_WARNING);
 			return -3;
 		}
+		if (!empty($this->multicurrency_code) && $this->multicurrency_code != getDolCurrency()) {
+			$this->error = $langs->trans('ErrorCreditTransferExpenseReportNotInCompanyCurrency', $this->multicurrency_code, getDolCurrency());
+			return -5;
+		}
 		if ($amount == 0) {
 			$this->error = 'WithdrawRequestErrorNilAmount';
 			return -1;
