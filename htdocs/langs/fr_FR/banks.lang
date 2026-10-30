@@ -217,3 +217,5 @@ CreditTransferChargeBearerHelp=Qui paie les frais bancaires des virements qui ne
 CreditTransferChargeBearerSHAR=Partagés, chaque partie paie les frais de sa banque
 CreditTransferChargeBearerDEBT=Tous les frais sont à notre charge
 CreditTransferChargeBearerCRED=Tous les frais sont à la charge du bénéficiaire
+AmountOutOfBankAccount=Montant débité du compte bancaire
+AmountOutOfBankAccountHelp=Le montant sorti du compte bancaire, dans la devise du compte. Obligatoire quand le compte n'est pas dans la devise de la facture.
