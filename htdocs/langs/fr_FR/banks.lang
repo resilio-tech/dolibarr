@@ -206,3 +206,6 @@ PendingDirectDebitToComplete=Prélèvements à clore
 PendingCreditTransferToCompleteShort=Virements à clôturer
 PendingCreditTransferToComplete=Virements à clôturer
 Requests=Demandes
+ErrorPaymentReferenceOfAccountTooLong=La référence de paiement est trop longue (35 caractères au maximum)
+ErrorPaymentReferenceOfAccountNotValid=La référence de paiement RF n'est pas valide : les chiffres de contrôle ne correspondent pas
+ErrorQRReferenceNotValid=La référence QR n'est pas valide : elle doit avoir 27 chiffres et son dernier chiffre doit correspondre au chiffre de contrôle
