@@ -167,7 +167,12 @@ if (empty($reshook)) {
 			$error = 1;
 			setEventMessages('WithdrawalCantBeCreditedTwice', array(), 'errors');
 		} else {
-			$error = $object->set_infocredit($user, $dt, ($object->checkIfExpenseReportBonPrelevement() ? 'expensereport' : ($salaryBonPl ? 'salary' : '')));
+			$typeofdocuments = ($object->checkIfExpenseReportBonPrelevement() ? 'expensereport' : ($salaryBonPl ? 'salary' : ''));
+			$bankamounts = array();
+			foreach (array_keys($object->getAmountsPerCurrency($typeofdocuments)) as $currency) {
+				$bankamounts[$currency] = (float) price2num(GETPOST('bank_amount_'.$currency, 'alpha'), 'MT');
+			}
+			$error = $object->set_infocredit($user, $dt, $typeofdocuments, $bankamounts);
 		}
 
 		if ($error) {
@@ -430,6 +435,18 @@ if ($id > 0 || $ref) {
 		print '<tr class="oddeven"><td>'.$langs->trans('CreditDate').'</td><td>';
 		print $form->selectDate(-1, '', 0, 0, 0, "infocredit", 1, 1, 0, '', '', array(array('adddateof' => $object->date_trans, 'labeladddateof' => $langs->transnoentitiesnoconv('TransData'))));
 		print '</td></tr>';
+		if ($object->type == 'bank-transfer' && !$salaryBonPl && getDolGlobalInt('ACCOUNTING_BOOK_EXCHANGE_DIFFERENCE')) {
+			$bankaccount = new Account($db);
+			$bankaccount->fetch($object->fk_bank_account ? $object->fk_bank_account : getDolGlobalInt('PAYMENTBYBANKTRANSFER_ID_BANKACCOUNT'));
+			$bankcurrency = (empty($bankaccount->currency_code) ? $conf->currency : $bankaccount->currency_code);
+			foreach ($object->getAmountsPerCurrency($object->checkIfExpenseReportBonPrelevement() ? 'expensereport' : '') as $currency => $amount) {
+				if ($currency != $bankcurrency) {
+					print '<tr class="oddeven"><td>'.$form->textwithpicto($langs->trans('AmountOutOfBankAccountForCurrency', $currency), $langs->trans('AmountOutOfBankAccountForCurrencyHelp', price($amount, 0, $langs, 1, -1, -1, $currency), $bankcurrency)).'</td><td>';
+					print '<input type="text" class="width100" name="bank_amount_'.$currency.'" value="'.dol_escape_htmltag(GETPOST('bank_amount_'.$currency, 'alpha')).'"> '.$bankcurrency;
+					print '</td></tr>';
+				}
+			}
+		}
 		print '</table>';
 		print '<br><div class="center"><span class="opacitymedium">'.$langs->trans("ThisWillAlsoAddPaymentOnInvoice").'</span></div>';
 		print '<div class="center"><input type="submit" class="button" value="'.dol_escape_htmltag($btnLabel).'"></div>';

@@ -911,6 +911,107 @@ class BonVirementTest extends CommonClassTest
 	}
 
 	/**
+	 * testSplitProRata
+	 *
+	 * The amount debited for a currency is split between the documents pro rata to their amount, the last one takes the
+	 * rounding remainder so the shares add up to the amount.
+	 *
+	 * @return void
+	 */
+	public function testSplitProRata()
+	{
+		$this->assertSame(array(11 => 33.33, 12 => 33.33, 13 => 33.34), BonPrelevement::splitProRata(100, array(11 => 10, 12 => 10, 13 => 10)));
+		$this->assertSame(array(21 => 106.67, 22 => 213.33), BonPrelevement::splitProRata(320, array(21 => 110, 22 => 220)));
+		$this->assertSame(array(31 => 650.0), BonPrelevement::splitProRata(650, array(31 => 700)));
+	}
+
+	/**
+	 * testCreditWithExchangeDifference
+	 *
+	 * When the exchange difference is booked, crediting an order with transfers in USD from a EUR account needs the amount
+	 * debited for them. It is split between the invoices pro rata to their USD amount and each payment gets its share,
+	 * the invoice in EUR gets its own amount.
+	 *
+	 * @return void
+	 */
+	public function testCreditWithExchangeDifference()
+	{
+		global $conf,$user,$langs,$db;
+		$conf = $this->savconf;
+		$user = $this->savuser;
+		$langs = $this->savlangs;
+		$db = $this->savdb;
+
+		require_once DOL_DOCUMENT_ROOT.'/multicurrency/class/multicurrency.class.php';
+		$savmodmulticurrency = $conf->modules['multicurrency'] ?? null;
+		$conf->modules['multicurrency'] = 'multicurrency';
+		$this->savedConstants['ACCOUNTING_BOOK_EXCHANGE_DIFFERENCE'] = $conf->global->ACCOUNTING_BOOK_EXCHANGE_DIFFERENCE ?? null;
+		$conf->global->ACCOUNTING_BOOK_EXCHANGE_DIFFERENCE = 1;
+		if (!MultiCurrency::getIdFromCode($db, 'USD')) {
+			$currency = new MultiCurrency($db);
+			$currency->code = 'USD';
+			$currency->name = 'US Dollar';
+			$this->assertGreaterThan(0, $currency->create($user), 'MultiCurrency::create failed: '.implode(',', $currency->errors));
+		}
+
+		try {
+			$this->setCompanyAddressForVersion9();
+			$socid1 = $this->createSwissSupplier('BonVirementTest CompanyX1', 'Rue du Lac 3', self::IBAN_CH);
+			$socid2 = $this->createSwissSupplier('BonVirementTest CompanyX2', 'Rue du Lac 4', self::IBAN_CH);
+
+			$facUSD1 = $this->createValidatedSupplierInvoice($socid1, 100.0, 'USD', 1.1);
+			$facUSD2 = $this->createValidatedSupplierInvoice($socid2, 200.0, 'USD', 1.1);
+			$facEUR = $this->createValidatedSupplierInvoice($socid1, 50.0);
+			$requests = array($this->createPaymentRequest($facUSD1, 100.0), $this->createPaymentRequest($facUSD2, 200.0), $this->createPaymentRequest($facEUR, 50.0));
+
+			$account = new Account($db);
+			$account->ref = 'BONVIR-XDIFF';
+			$account->label = 'BonVirementTest exchange difference';
+			$account->country_id = 1;
+			$account->date_solde = dol_now();
+			$account->iban = 'FR7630001007941234567891058';
+			$account->bic = self::BIC;
+			$account->owner_name = 'TestCorp';
+			$account->currency_code = $conf->currency;
+			$account->sepa_transfer_schema_version = '9';
+			$this->assertGreaterThan(0, $account->create($user), $account->errorsToString());
+
+			$bon = new BonPrelevement($db);
+			$this->assertGreaterThanOrEqual(0, $bon->create('', '', 'real', 'ALL', 0, 0, 'bank-transfer', $requests, $account->id), $bon->error.' '.implode(', ', $bon->invoice_in_error));
+			$this->assertGreaterThan(0, $bon->fetch($bon->id));
+			$this->assertEquals(array($conf->currency => 50.0, 'USD' => 330.0), $bon->getAmountsPerCurrency());
+			$this->assertGreaterThanOrEqual(0, $bon->set_infotrans($user, dol_now(), 2), (string) $bon->error);
+			$this->assertGreaterThan(0, $bon->fetch($bon->id));
+			$this->assertGreaterThanOrEqual(0, $bon->set_infocredit($user, dol_now(), '', array('USD' => 320)), (string) $bon->error);
+
+			$expected = array($facUSD1->id => array(-106.67, -6.67), $facUSD2->id => array(-213.33, -13.33), $facEUR->id => array(-50, 0));
+			foreach ($expected as $facid => $amounts) {
+				$resql = $db->query("SELECT b.rowid, b.amount FROM ".MAIN_DB_PREFIX."bank as b, ".MAIN_DB_PREFIX."paiementfourn as p, ".MAIN_DB_PREFIX."paiementfourn_facturefourn as pf WHERE b.rowid = p.fk_bank AND p.rowid = pf.fk_paiementfourn AND pf.fk_facturefourn = ".((int) $facid));
+				$obj = $db->fetch_object($resql);
+				$this->assertEquals($amounts[0], (float) $obj->amount, 'Amount debited for invoice '.$facid);
+				$bankline = new AccountLine($db);
+				$bankline->id = (int) $obj->rowid;
+				$this->assertEquals($amounts[1], $bankline->getExchangeDifference(), 'Exchange difference of invoice '.$facid);
+			}
+
+			$facUSD3 = $this->createValidatedSupplierInvoice($socid1, 100.0, 'USD', 1.1);
+			$bon2 = new BonPrelevement($db);
+			$this->assertGreaterThanOrEqual(0, $bon2->create('', '', 'real', 'ALL', 0, 0, 'bank-transfer', array($this->createPaymentRequest($facUSD3, 100.0)), $account->id), (string) $bon2->error);
+			$this->assertGreaterThan(0, $bon2->fetch($bon2->id));
+			$this->assertGreaterThanOrEqual(0, $bon2->set_infotrans($user, dol_now(), 2), (string) $bon2->error);
+			$this->assertGreaterThan(0, $bon2->fetch($bon2->id));
+			$this->assertLessThan(0, $bon2->set_infocredit($user, dol_now()), 'The amount debited for the transfers in USD is required');
+			$this->assertStringContainsString('USD', $bon2->error);
+		} finally {
+			if ($savmodmulticurrency === null) {
+				unset($conf->modules['multicurrency']);
+			} else {
+				$conf->modules['multicurrency'] = $savmodmulticurrency;
+			}
+		}
+	}
+
+	/**
 	 * testRequestInInvoiceCurrency
 	 *
 	 * A request typed in the invoice currency keeps that amount and gets its company currency amount with the invoice

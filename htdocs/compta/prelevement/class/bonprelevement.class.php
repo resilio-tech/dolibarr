@@ -599,9 +599,10 @@ class BonPrelevement extends CommonObject
 	 *	@param	User	$user			Id of user
 	 *	@param 	int		$date			date of action
 	 *  @param  string  $type        	'salary' for type=salary, 'expensereport' for type=expensereport
+	 *  @param  array<string,float>	$bankamounts	Amount debited from the bank account of the order for each currency of transfer that is not the one of the account, used when the exchange difference is booked
 	 *	@return	int						>0 if OK, <0 if KO
 	 */
-	public function set_infocredit($user, $date, $type = '')
+	public function set_infocredit($user, $date, $type = '', $bankamounts = array())
 	{
 		// phpcs:enable
 		global $conf, $langs;
@@ -642,6 +643,7 @@ class BonPrelevement extends CommonObject
 				$amountsperthirdparty = array();
 				$multicurrencyamountsperthirdparty = array();
 				$expensereportsincurrency = array();
+				$amountspercurrency = array();
 
 				$facs = $this->getListInvoices(1, $type);
 				if ($this->error) {
@@ -667,6 +669,8 @@ class BonPrelevement extends CommonObject
 					$result = $fac->fetch($facs[$i][0]);
 
 					$amounts[$fac->id] = $facs[$i][1];
+					$currencyoftransfer = (empty($facs[$i][3]) ? getDolCurrency() : $facs[$i][3]);
+					$amountspercurrency[$currencyoftransfer][$fac->id] = (float) ($currencyoftransfer == getDolCurrency() ? $facs[$i][1] : $facs[$i][2]);
 					$amountincurrency = null;
 					if ($this->type == 'bank-transfer') {
 						if ($type == 'salary') {
@@ -728,6 +732,25 @@ class BonPrelevement extends CommonObject
 					}
 				}
 
+				$debitedamounts = array();
+				if (getDolGlobalInt('ACCOUNTING_BOOK_EXCHANGE_DIFFERENCE') && $this->type == 'bank-transfer' && $type != 'salary') {
+					$bankaccount = new Account($this->db);
+					$bankaccount->fetch($fk_bank_account);
+					$bankcurrency = (empty($bankaccount->currency_code) ? getDolCurrency() : $bankaccount->currency_code);
+					foreach ($amountspercurrency as $currencyoftransfer => $documentamounts) {
+						if ($currencyoftransfer == $bankcurrency) {
+							$debitedamounts += $documentamounts;
+						} elseif (($bankamounts[$currencyoftransfer] ?? 0) <= 0) {
+							$langs->load('banks');
+							$this->error = $langs->trans('ErrorFieldRequired', $langs->transnoentitiesnoconv('AmountOutOfBankAccountForCurrency', $currencyoftransfer));
+							$this->db->rollback();
+							return -1;
+						} else {
+							$debitedamounts += self::splitProRata((float) $bankamounts[$currencyoftransfer], $documentamounts);
+						}
+					}
+				}
+
 				// Make one payment per customer or employee, and per supplier and currency for invoices in another currency than the company one
 				$paymentsamounts = array();
 				foreach ($amountsperthirdparty as $key => $cursoramounts) {
@@ -758,6 +781,10 @@ class BonPrelevement extends CommonObject
 					$paiement->amounts = $paymentamounts['amounts']; // Array with detail of dispatching of payments for each invoice
 					if ($paiement instanceof Paiement) {
 						$paiement->multicurrency_amounts = $paymentamounts['multicurrency_amounts'];
+					}
+					if ($debitedamounts) {
+						$documentids = ($paiement instanceof PaymentExpenseReport ? array($paymentamounts['key']) : array_keys($paymentamounts['amounts'] + $paymentamounts['multicurrency_amounts']));
+						$paiement->bank_amount = (float) price2num(array_sum(array_intersect_key($debitedamounts, array_flip($documentids))), 'MT');
 					}
 
 					if ($this->type == 'bank-transfer') {
@@ -859,6 +886,44 @@ class BonPrelevement extends CommonObject
 		}
 	}
 
+	/**
+	 *	Return the total of the documents of the order for each currency of transfer
+	 *
+	 *  @param  string  $type		'salary' for type=salary, 'expensereport' for type=expensereport
+	 *	@return	array<string,float>	Total in the currency of transfer, by currency
+	 */
+	public function getAmountsPerCurrency($type = '')
+	{
+		$amountspercurrency = array();
+		foreach ($this->getListInvoices(1, $type) as $document) {
+			$currency = (empty($document[3]) ? getDolCurrency() : $document[3]);
+			$amountspercurrency[$currency] = ($amountspercurrency[$currency] ?? 0) + (float) ($currency == getDolCurrency() ? $document[1] : $document[2]);
+		}
+
+		return $amountspercurrency;
+	}
+
+	/**
+	 *	Split an amount between documents pro rata to their amounts, the last one takes the rounding remainder
+	 *
+	 *	@param	float				$total		Amount to split
+	 *	@param	array<int,float>	$amounts	Amount of each document, by document id
+	 *	@return	array<int,float>				Share of each document, by document id
+	 */
+	public static function splitProRata($total, $amounts)
+	{
+		$shares = array();
+		$sum = array_sum($amounts);
+		$remainder = $total;
+		$lastid = array_key_last($amounts);
+		foreach ($amounts as $id => $amount) {
+			$shares[$id] = (float) price2num($id == $lastid ? $remainder : $total * $amount / $sum, 'MT');
+			$remainder -= $shares[$id];
+		}
+
+		return $shares;
+	}
+
 	// phpcs:disable PEAR.NamingConventions.ValidFunctionName.ScopeNotCamelCaps
 	/**
 	 *	Set withdrawal to transmitted status
@@ -925,8 +990,8 @@ class BonPrelevement extends CommonObject
 	 *
 	 *  @param	int<0,1>	$amounts 		If you want to get the amount of the order for each invoice, salary or expense report
 	 *  @param	'bank-transfer'|'salary'|'expensereport'|'' $type	'salary' for type=salary, 'expensereport' for type=expensereport (default = supplier invoice
-	 *	@return	array<array{int,float}>|int[]	Array(Id of invoices/salary/expense report, Amount to pay)
-	 *	@phpstan-return	($amounts is 0 ? int[] : array<array{int,float}>)
+	 *	@return	array<array{int,float,?float,?string}>|int[]	Array(Id of invoices/salary/expense report, Amount to pay, Amount in the currency of transfer, Currency of transfer)
+	 *	@phpstan-return	($amounts is 0 ? int[] : array<array{int,float,?float,?string}>)
 	 */
 	private function getListInvoices($amounts = 0, $type = '')
 	{
@@ -952,6 +1017,7 @@ class BonPrelevement extends CommonObject
 		if ($amounts) {
 			$sql .= ", SUM(pl.amount)";
 			$sql .= ", SUM((SELECT pd.multicurrency_amount FROM " . MAIN_DB_PREFIX . "prelevement_demande as pd WHERE pd.rowid = pl.fk_prelevement_demande))";
+			$sql .= ", MAX((SELECT pd.multicurrency_code FROM " . MAIN_DB_PREFIX . "prelevement_demande as pd WHERE pd.rowid = pl.fk_prelevement_demande))";
 		}
 		$sql .= " FROM " . MAIN_DB_PREFIX . "prelevement_bons as pb,";
 		$sql .= " " . MAIN_DB_PREFIX . "prelevement_lignes as pl,";
@@ -988,7 +1054,8 @@ class BonPrelevement extends CommonObject
 						$arr[$i] = array(
 							$row[0],
 							$row[1],
-							$row[2]
+							$row[2],
+							$row[3]
 						);
 					}
 					$i++;
