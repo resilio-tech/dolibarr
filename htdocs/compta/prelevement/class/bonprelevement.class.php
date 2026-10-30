@@ -1324,11 +1324,8 @@ class BonPrelevement extends CommonObject
 			$sql .= " AND sr.default_rib = 1";
 			$sql .= " AND sr.type = 'ban'";
 		} else {
-			//$sql .= " AND sr.type = 'ban'";		// TODO Add AND sr.type = 'ban' for users too
-			// TODO Add 'AND sr.default_rib = 1' in sourcetype salary and expensereport too
-			// Note: the column has been created in v21 in llx_user_rib and default to 0
-			// If we add a test on sr.default_rib = 1, we must also check we have a correct error management to stop if no default BAN is found.
-			// Also it may be found for on thirdparty and not for the other.
+			$sql .= " AND sr.default_rib = 1";
+			$sql .= " AND COALESCE(NULLIF(sr.currency_code, ''), '".$this->db->escape(getDolCurrency())."') = '".$this->db->escape(getDolCurrency())."'";
 		}
 		$sql .= " WHERE f.entity IN (".((int) $entity).')';
 		if (!$forusers) {
@@ -2273,6 +2270,8 @@ class BonPrelevement extends CommonObject
 					$sql .= " AND p.fk_" . $this->db->sanitize($documenttable) . " = s.rowid";
 					$sql .= " AND s." . $this->db->sanitize($documentuserfield) . " = u.rowid";
 					$sql .= " AND rib.fk_user = s." . $this->db->sanitize($documentuserfield);
+					$sql .= " AND rib.default_rib = 1";
+					$sql .= " AND COALESCE(NULLIF(rib.currency_code, ''), '".$this->db->escape(getDolCurrency())."') = '".$this->db->escape(getDolCurrency())."'";
 				} else {
 					$documenturl = '/fourn/facture/card.php?facid=';
 					$sql = "SELECT soc.rowid as socid, soc.code_client as code, soc.address, soc.zip, soc.town, c.code as country_code,";

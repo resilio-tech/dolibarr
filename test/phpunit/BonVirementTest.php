@@ -34,6 +34,7 @@ require_once dirname(__FILE__).'/../../htdocs/compta/bank/class/account.class.ph
 require_once dirname(__FILE__).'/CommonClassTest.class.php';
 require_once dirname(__FILE__).'/../../htdocs/expensereport/class/expensereport.class.php';
 require_once dirname(__FILE__).'/../../htdocs/user/class/userbankaccount.class.php';
+require_once dirname(__FILE__).'/../../htdocs/salaries/class/salary.class.php';
 
 if (empty($user->id)) {
 	print "Load permissions for admin user nb 1\n";
@@ -72,6 +73,8 @@ class BonVirementTest extends CommonClassTest
 	const QRREFERENCE     = '210000000003139471430009017';
 	const BIC_CH          = 'UBSWCHZH80A';
 	const IBAN_EMPLOYEE   = 'FR7630001007941234567891155';
+	const IBAN_EMPLOYEE_2 = 'FR7630001007941234567891252';
+	const IBAN_EMPLOYEE_3 = 'FR7630001007941234567891349';
 
 	// ---------------------------------------------------------------------------
 	// Shared fixtures created once in setUpBeforeClass(),
@@ -1163,6 +1166,80 @@ class BonVirementTest extends CommonClassTest
 		$this->assertEquals(0, $db->num_rows($resql));
 	}
 
+	/**
+	 * testExpenseReportCreditTransferToDefaultAccount
+	 *
+	 * An employee with several bank accounts is paid once, on its default bank account in the company currency.
+	 *
+	 * @return void
+	 */
+	public function testExpenseReportCreditTransferToDefaultAccount()
+	{
+		global $conf,$user,$langs,$db;
+		$conf = $this->savconf;
+		$user = $this->savuser;
+		$langs = $this->savlangs;
+		$db = $this->savdb;
+
+		$employeeid = $this->createEmployeeWithBankAccount();
+		$this->addBankAccountToEmployee($employeeid, self::IBAN_EMPLOYEE_2, getDolCurrency())->setAsDefault();
+		$this->addBankAccountToEmployee($employeeid, self::IBAN_EMPLOYEE_3, (getDolCurrency() == 'EUR' ? 'CHF' : 'EUR'));
+		$expensereport = $this->createExpenseReport($employeeid);
+		$this->assertGreaterThan(0, $expensereport->setValidate($user), (string) $expensereport->error);
+		$this->assertGreaterThan(0, $expensereport->setApproved($user), (string) $expensereport->error);
+		$this->assertEquals(1, $expensereport->demande_prelevement($user, 600.0), (string) $expensereport->error);
+		$resql = $db->query("SELECT rowid FROM ".MAIN_DB_PREFIX."prelevement_demande WHERE fk_expensereport = ".((int) $expensereport->id));
+		$requestid = (int) $db->fetch_object($resql)->rowid;
+
+		$bon = new BonPrelevement($db);
+		$result = $bon->create('', '', 'real', 'ALL', 0, 0, 'bank-transfer', array($requestid), self::$fkBankAccount, 'expensereport');
+		$this->assertEquals(1, $result, 'BonPrelevement::create() failed: '.$bon->error.' '.implode(', ', $bon->invoice_in_error));
+		$this->assertEquals(array(self::IBAN_EMPLOYEE_2 => 600.0), $this->parseSepaIbanAmounts($bon->filename));
+		$this->assertSame(1, substr_count((string) file_get_contents($bon->filename), '<CdtTrfTxInf>'));
+		$this->assertEquals(600.0, (float) $bon->total);
+		$resql = $db->query("SELECT COUNT(*) as nb FROM ".MAIN_DB_PREFIX."prelevement_lignes WHERE fk_prelevement_bons = ".((int) $bon->id));
+		$this->assertEquals(1, (int) $db->fetch_object($resql)->nb);
+	}
+
+	/**
+	 * testSalaryCreditTransferToDefaultAccount
+	 *
+	 * A salary is paid once, on the default bank account of the employee in the company currency.
+	 *
+	 * @return void
+	 */
+	public function testSalaryCreditTransferToDefaultAccount()
+	{
+		global $conf,$user,$langs,$db;
+		$conf = $this->savconf;
+		$user = $this->savuser;
+		$langs = $this->savlangs;
+		$db = $this->savdb;
+
+		$employeeid = $this->createEmployeeWithBankAccount();
+		$this->addBankAccountToEmployee($employeeid, self::IBAN_EMPLOYEE_3, (getDolCurrency() == 'EUR' ? 'CHF' : 'EUR'));
+		$this->addBankAccountToEmployee($employeeid, self::IBAN_EMPLOYEE_2, getDolCurrency());
+
+		$salary = new Salary($db);
+		$salary->fk_user = $employeeid;
+		$salary->label = 'BonVirementTest salary';
+		$salary->amount = 1000;
+		$salary->datesp = dol_now();
+		$salary->dateep = dol_now();
+		$this->assertGreaterThan(0, $salary->create($user), 'Salary::create() failed: '.$salary->error);
+		$this->assertEquals(1, $salary->demande_prelevement($user, 1000.0, 'salaire', 'salaire'), (string) $salary->error);
+		$resql = $db->query("SELECT rowid FROM ".MAIN_DB_PREFIX."prelevement_demande WHERE fk_salary = ".((int) $salary->id));
+		$requestid = (int) $db->fetch_object($resql)->rowid;
+
+		$bon = new BonPrelevement($db);
+		$result = $bon->create('', '', 'real', 'ALL', 0, 0, 'bank-transfer', array($requestid), self::$fkBankAccount, 'salary');
+		$this->assertEquals(1, $result, 'BonPrelevement::create() failed: '.$bon->error.' '.implode(', ', $bon->invoice_in_error));
+		$this->assertEquals(array(self::IBAN_EMPLOYEE => 1000.0), $this->parseSepaIbanAmounts($bon->filename));
+		$this->assertSame(1, substr_count((string) file_get_contents($bon->filename), '<CdtTrfTxInf>'));
+		$resql = $db->query("SELECT COUNT(*) as nb FROM ".MAIN_DB_PREFIX."prelevement_lignes WHERE fk_prelevement_bons = ".((int) $bon->id));
+		$this->assertEquals(1, (int) $db->fetch_object($resql)->nb);
+	}
+
 	// ---------------------------------------------------------------------------
 	// Private helpers
 	// ---------------------------------------------------------------------------
@@ -1190,6 +1267,29 @@ class BonVirementTest extends CommonClassTest
 		$this->assertGreaterThan(0, $rib->create($user), 'UserBankAccount::create() failed: '.$rib->error);
 
 		return $employeeid;
+	}
+
+	/**
+	 * Adds a bank account to a user.
+	 *
+	 * @param int    $userid   Row ID of the user
+	 * @param string $iban     IBAN of the bank account
+	 * @param string $currency Currency of the bank account
+	 * @return UserBankAccount
+	 */
+	private function addBankAccountToEmployee(int $userid, string $iban, string $currency): UserBankAccount
+	{
+		global $user, $db;
+
+		$rib = new UserBankAccount($db);
+		$rib->userid = $userid;
+		$rib->iban = $iban;
+		$rib->bic = self::BIC;
+		$rib->currency_code = $currency;
+		$this->assertGreaterThan(0, $rib->create($user), 'UserBankAccount::create() failed: '.$rib->error);
+		$rib->fetch($rib->id);
+
+		return $rib;
 	}
 
 	/**
