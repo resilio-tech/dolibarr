@@ -259,11 +259,12 @@ if ($result) {
 		}
 
 		$tax_id = $obj->tva_tx . ($obj->vat_src_code ? ' (' . $obj->vat_src_code . ')' : '');
-		$vatdata_cache_key = $obj->country_code.'|'.$tax_id;
+		$suppliercountrycode = $obj->country_code ? $obj->country_code : $mysoc->country_code;
+		$vatdata_cache_key = $suppliercountrycode.'|'.$tax_id;
 		if (array_key_exists($vatdata_cache_key, $vatdata_cache)) {
 			$vatdata = $vatdata_cache[$vatdata_cache_key];
 		} else {
-			$supplierstatic->country_code = $obj->country_code;
+			$supplierstatic->country_code = $suppliercountrycode;
 			$vatdata = getTaxesFromId($tax_id, $mysoc, $supplierstatic, 0);
 			$vatdata_cache[$vatdata_cache_key] = $vatdata;
 		}
