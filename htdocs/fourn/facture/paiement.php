@@ -350,6 +350,7 @@ if (empty($reshook)) {
 			$paiement->num_payment = GETPOST('num_paiement', 'alphanohtml');
 			$paiement->note_private = GETPOST('comment', 'alpha');
 			$paiement->fk_account = GETPOSTINT('accountid');
+			$paiement->bank_amount = (float) price2num(GETPOST('bank_amount', 'alpha'), 'MT');
 
 			// Create payment and update this->multicurrency_amounts if this->amounts filled or
 			// this->amounts if this->multicurrency_amounts filled.
@@ -555,6 +556,10 @@ if ($action == 'create' || $action == 'confirm_paiement' || $action == 'add_paie
 				print img_picto('', 'bank_account', 'class="pictofixedwidth"');
 				print $form->select_comptes(empty($accountid) ? $obj->fk_account : $accountid, 'accountid', 0, '', 2, '', 0, 'widthcentpercentminusx maxwidth500', 1);
 				print '</td></tr>';
+				if (getDolGlobalInt('ACCOUNTING_BOOK_EXCHANGE_DIFFERENCE')) {
+					print '<tr><td>'.$form->textwithpicto($langs->trans('AmountOutOfBankAccount'), $langs->trans('AmountOutOfBankAccountHelp')).'</td>';
+					print '<td><input type="text" class="width100" name="bank_amount" value="'.dol_escape_htmltag(GETPOST('bank_amount', 'alpha')).'"></td></tr>';
+				}
 			} else {
 				print '<tr><td>&nbsp;</td></tr>';
 			}

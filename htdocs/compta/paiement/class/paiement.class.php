@@ -108,6 +108,11 @@ class Paiement extends CommonObject
 	public $multicurrency_currency;
 
 	/**
+	 * @var float							Amount debited from the bank account, in the currency of the account, when it is not the currency of the payment
+	 */
+	public $bank_amount;
+
+	/**
 	 * @var array<int,float|string|null> array: invoice ID => amount for that invoice (in the main currency)
 	 */
 	public $amounts = array();
@@ -816,7 +821,7 @@ class Paiement extends CommonObject
 	 */
 	public function addPaymentToBank($user, $mode, $label, $accountid, $emetteur_nom, $emetteur_banque, $notrigger = 0, $accountancycode = '', $addbankurl = '')
 	{
-		global $conf, $user;
+		global $conf, $langs, $user;
 
 		$error = 0;
 		$bank_line_id = 0;
@@ -868,6 +873,25 @@ class Paiement extends CommonObject
 			if ($conf->currency != $acc->currency_code) {
 				$totalamount = $this->multicurrency_amount;		// We will insert into llx_bank.amount in foreign currency of invoice
 				$totalamount_main_currency = $this->amount;		// We will also save the amount in main currency into column llx_bank.amount_main_currency
+			}
+
+			if ($mode == 'payment_supplier' && getDolGlobalInt('ACCOUNTING_BOOK_EXCHANGE_DIFFERENCE')) {
+				$bankcurrency = (empty($acc->currency_code) ? $conf->currency : $acc->currency_code);
+				$totalamount_main_currency = null;
+				if ($bankcurrency == $this->multicurrency_currency) {
+					$totalamount = $this->multicurrency_amount;
+				} elseif (empty($this->bank_amount)) {
+					$langs->load('banks');
+					$this->error = $langs->trans('ErrorFieldRequired', $langs->transnoentitiesnoconv('AmountOutOfBankAccount'));
+					$this->db->rollback();
+					return -1;
+				} else {
+					$totalamount = ($this->amount < 0 ? -1 : 1) * abs($this->bank_amount);
+				}
+				if ($bankcurrency != $conf->currency) {
+					list(, $rate) = MultiCurrency::getIdAndTxFromCode($this->db, $bankcurrency, $this->datepaye);
+					$totalamount_main_currency = (float) price2num($totalamount / $rate, 'MT');
+				}
 			}
 
 			if ($mode == 'payment_supplier') {

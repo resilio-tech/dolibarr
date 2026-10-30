@@ -34,6 +34,10 @@ require_once dirname(__FILE__).'/CommonClassTest.class.php';
 require_once dirname(__FILE__).'/../../htdocs/fourn/class/fournisseur.facture.class.php';
 require_once dirname(__FILE__).'/../../htdocs/fourn/class/fournisseur.facture-rec.class.php';
 require_once dirname(__FILE__).'/../../htdocs/societe/class/societe.class.php';
+require_once dirname(__FILE__).'/../../htdocs/fourn/class/paiementfourn.class.php';
+require_once dirname(__FILE__).'/../../htdocs/compta/bank/class/account.class.php';
+require_once dirname(__FILE__).'/../../htdocs/multicurrency/class/multicurrency.class.php';
+require_once dirname(__FILE__).'/../../htdocs/multicurrency/class/currencyrate.class.php';
 
 if (empty($user->id)) {
 	print "Load permissions for admin user nb 1\n";
@@ -290,5 +294,196 @@ class FactureFournisseurTest extends CommonClassTest
 		} finally {
 			date_default_timezone_set($savtz);
 		}
+	}
+
+	/**
+	 * testFactureFournisseurPaymentWithExchangeDifference
+	 *
+	 * An invoice of 700 NZD booked 610 in company currency is paid from a GBP account: the payment settles the 700 NZD,
+	 * 650 GBP are debited, worth 600 at the rate of the day, so 10 of exchange gain. Paid from a company currency
+	 * account with 620 debited, it is a loss of 10.
+	 *
+	 * @return	void
+	 */
+	public function testFactureFournisseurPaymentWithExchangeDifference()
+	{
+		global $conf, $user, $langs, $db;
+		$conf = $this->savconf;
+		$user = $this->savuser;
+		$langs = $this->savlangs;
+		$db = $this->savdb;
+
+		$conf->global->ACCOUNTING_BOOK_EXCHANGE_DIFFERENCE = 1;
+		$this->setRateOfTheDay('NZD', 700 / 610);
+		$this->setRateOfTheDay('GBP', 650 / 600);
+		$accountgbp = $this->createBankAccount('GBP');
+
+		$invoice = $this->createInvoiceInCurrency('NZD', 700, 700 / 610);
+		$payment = $this->createPayment($invoice, 700, $accountgbp);
+		$this->assertLessThan(0, $payment->addPaymentToBank($user, 'payment_supplier', '(SupplierInvoicePayment)', $accountgbp, '', ''), 'The amount debited is required from an account in another currency than the invoice');
+
+		$payment->bank_amount = 650;
+		$banklineid = $payment->addPaymentToBank($user, 'payment_supplier', '(SupplierInvoicePayment)', $accountgbp, '', '');
+		$this->assertGreaterThan(0, $banklineid, (string) $payment->error);
+
+		$resql = $db->query("SELECT amount, amount_main_currency FROM ".MAIN_DB_PREFIX."bank WHERE rowid = ".((int) $banklineid));
+		$obj = $db->fetch_object($resql);
+		$this->assertEquals(-650, (float) $obj->amount, 'The GBP account is debited of the amount typed');
+		$this->assertEquals(-600, (float) $obj->amount_main_currency, 'The amount debited is converted at the rate of the day');
+		$bankline = new AccountLine($db);
+		$bankline->id = $banklineid;
+		$this->assertEquals(10, $bankline->getExchangeDifference());
+		$invoice->fetch($invoice->id);
+		$this->assertEquals(FactureFournisseur::STATUS_CLOSED, $invoice->status, 'The payment in the invoice currency settles it');
+
+		$accountcompany = $this->createBankAccount($conf->currency);
+		$invoice = $this->createInvoiceInCurrency('NZD', 700, 700 / 610);
+		$payment = $this->createPayment($invoice, 700, $accountcompany);
+		$payment->bank_amount = 620;
+		$banklineid = $payment->addPaymentToBank($user, 'payment_supplier', '(SupplierInvoicePayment)', $accountcompany, '', '');
+		$this->assertGreaterThan(0, $banklineid, (string) $payment->error);
+		$resql = $db->query("SELECT amount, amount_main_currency FROM ".MAIN_DB_PREFIX."bank WHERE rowid = ".((int) $banklineid));
+		$obj = $db->fetch_object($resql);
+		$this->assertEquals(-620, (float) $obj->amount);
+		$this->assertNull($obj->amount_main_currency);
+		$bankline->id = $banklineid;
+		$this->assertEquals(-10, $bankline->getExchangeDifference());
+
+		$conf->global->ACCOUNTING_BOOK_EXCHANGE_DIFFERENCE = 0;
+	}
+
+	/**
+	 * testFactureFournisseurPaymentWithoutExchangeDifference
+	 *
+	 * Without the option, an invoice can not be paid from an account in a third currency and the bank gets the invoice at its rate.
+	 *
+	 * @return	void
+	 */
+	public function testFactureFournisseurPaymentWithoutExchangeDifference()
+	{
+		global $conf, $user, $langs, $db;
+		$conf = $this->savconf;
+		$user = $this->savuser;
+		$langs = $this->savlangs;
+		$db = $this->savdb;
+
+		$conf->global->ACCOUNTING_BOOK_EXCHANGE_DIFFERENCE = 0;
+		$this->setRateOfTheDay('NZD', 700 / 610);
+		$this->setRateOfTheDay('GBP', 650 / 600);
+		$accountgbp = $this->createBankAccount('GBP');
+		$invoice = $this->createInvoiceInCurrency('NZD', 700, 700 / 610);
+
+		$payment = new PaiementFourn($db);
+		$payment->datepaye = dol_now();
+		$payment->multicurrency_amounts = array($invoice->id => 700);
+		$payment->paiementid = dol_getIdFromCode($db, 'VIR', 'c_paiement', 'code', 'id', 1);
+		$payment->fk_account = $accountgbp;
+		$this->assertLessThan(0, $payment->create($user, 1), 'An invoice in NZD can not be paid from a GBP account');
+
+		$accountcompany = $this->createBankAccount($conf->currency);
+		$payment = $this->createPayment($invoice, 700, $accountcompany);
+		$payment->bank_amount = 620;
+		$banklineid = $payment->addPaymentToBank($user, 'payment_supplier', '(SupplierInvoicePayment)', $accountcompany, '', '');
+		$this->assertGreaterThan(0, $banklineid, (string) $payment->error);
+		$resql = $db->query("SELECT amount FROM ".MAIN_DB_PREFIX."bank WHERE rowid = ".((int) $banklineid));
+		$this->assertEquals(-610, (float) $db->fetch_object($resql)->amount, 'The amount typed is ignored');
+		$bankline = new AccountLine($db);
+		$bankline->id = $banklineid;
+		$this->assertEquals(0, $bankline->getExchangeDifference());
+	}
+
+	/**
+	 * Create and validate a supplier invoice of one line in a currency
+	 *
+	 * @param	string	$currency	Currency code
+	 * @param	float	$amount		Amount in the currency
+	 * @param	float	$rate		Rate of the invoice
+	 * @return	FactureFournisseur
+	 */
+	private function createInvoiceInCurrency(string $currency, float $amount, float $rate): FactureFournisseur
+	{
+		global $user, $db;
+
+		$invoice = new FactureFournisseur($db);
+		$invoice->initAsSpecimen();
+		$invoice->lines = array();
+		$invoice->ref_supplier = 'XDIFF'.uniqid();
+		$invoice->multicurrency_code = $currency;
+		$invoice->multicurrency_tx = $rate;
+		$this->assertGreaterThan(0, $invoice->create($user), (string) $invoice->error);
+		$this->assertGreaterThan(0, $invoice->addline('Line in invoice currency', 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 'HT', 0, -1, 0, array(), null, 0, $amount), (string) $invoice->error);
+		$this->assertGreaterThan(0, $invoice->validate($user), (string) $invoice->error);
+		$invoice->fetch($invoice->id);
+
+		return $invoice;
+	}
+
+	/**
+	 * Create a payment of a supplier invoice in its currency
+	 *
+	 * @param	FactureFournisseur	$invoice	Invoice
+	 * @param	float				$amount		Amount in the currency of the invoice
+	 * @param	int					$accountid	Id of the bank account
+	 * @return	PaiementFourn
+	 */
+	private function createPayment(FactureFournisseur $invoice, float $amount, int $accountid): PaiementFourn
+	{
+		global $user, $db;
+
+		$payment = new PaiementFourn($db);
+		$payment->datepaye = dol_now();
+		$payment->multicurrency_amounts = array($invoice->id => $amount);
+		$payment->paiementid = dol_getIdFromCode($db, 'VIR', 'c_paiement', 'code', 'id', 1);
+		$payment->fk_account = $accountid;
+		$this->assertGreaterThan(0, $payment->create($user, 1), (string) $payment->error);
+
+		return $payment;
+	}
+
+	/**
+	 * Set the rate of a currency for today
+	 *
+	 * @param	string	$code	Currency code
+	 * @param	float	$rate	Rate
+	 * @return	void
+	 */
+	private function setRateOfTheDay(string $code, float $rate): void
+	{
+		global $user, $db;
+
+		$id = MultiCurrency::getIdFromCode($db, $code);
+		if ($id <= 0) {
+			$currency = new MultiCurrency($db);
+			$currency->code = $code;
+			$currency->name = $code;
+			$id = $currency->create($user);
+			$this->assertGreaterThan(0, $id, $currency->errorsToString());
+		}
+		$currencyrate = new CurrencyRate($db);
+		$currencyrate->rate = $rate;
+		$this->assertGreaterThan(0, $currencyrate->create($user, $id));
+	}
+
+	/**
+	 * Create a bank account in a currency
+	 *
+	 * @param	string	$currency	Currency code
+	 * @return	int					Id of the bank account
+	 */
+	private function createBankAccount(string $currency): int
+	{
+		global $user, $db;
+
+		$account = new Account($db);
+		$account->ref = 'XD'.$currency.substr(uniqid(), -6);
+		$account->label = $account->ref;
+		$account->type = Account::TYPE_CURRENT;
+		$account->country_id = 1;
+		$account->date_solde = dol_now();
+		$account->currency_code = $currency;
+		$id = $account->create($user);
+		$this->assertGreaterThan(0, $id, $account->errorsToString());
+
+		return $id;
 	}
 }
