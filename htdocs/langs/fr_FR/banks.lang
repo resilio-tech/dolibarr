@@ -219,3 +219,5 @@ CreditTransferChargeBearerDEBT=Tous les frais sont à notre charge
 CreditTransferChargeBearerCRED=Tous les frais sont à la charge du bénéficiaire
 AmountOutOfBankAccount=Montant débité du compte bancaire
 AmountOutOfBankAccountHelp=Le montant sorti du compte bancaire, dans la devise du compte. Obligatoire quand le compte n'est pas dans la devise de la facture.
+AmountOutOfBankAccountForCurrency=Montant débité du compte bancaire pour les virements en %s
+AmountOutOfBankAccountForCurrencyHelp=Les virements dans cette devise totalisent %s. Saisir le montant sorti du compte bancaire pour eux, en %s, tel que lu sur le relevé. Il est réparti entre les documents au prorata de leur montant.

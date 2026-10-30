@@ -224,3 +224,5 @@ CreditTransferChargeBearerDEBT=All the fees are paid by us
 CreditTransferChargeBearerCRED=All the fees are paid by the beneficiary
 AmountOutOfBankAccount=Amount debited from the bank account
 AmountOutOfBankAccountHelp=The amount that left the bank account, in the currency of the account. Required when the account is not in the currency of the invoice.
+AmountOutOfBankAccountForCurrency=Amount debited from the bank account for the transfers in %s
+AmountOutOfBankAccountForCurrencyHelp=The transfers in this currency total %s. Type the amount that left the bank account for them, in %s, as read on the bank statement. It is split between the documents pro rata to their amount.
