@@ -7029,9 +7029,9 @@ if ($action == 'create') {
 
 			$htmltooltip = '';
 			if ($isErasable == -6) {
-				$htmltooltip = $langs->trans('DisabledBecauseAlreadySentByEmail');
-			} elseif ($isErasable == -5) {
 				$htmltooltip = $langs->trans('DisabledBecauseAlreadyPrintedOnce');
+			} elseif ($isErasable == -5) {
+				$htmltooltip = $langs->trans('DisabledBecauseAlreadySentByEmail');
 			} elseif ($isErasable == -4) {
 				$htmltooltip = $langs->trans('DisabledBecausePayments');
 			} elseif ($isErasable == -3) {
