@@ -815,13 +815,13 @@ function restrictedArea(User $user, $features, $object = 0, $tableandshare = '',
  */
 function checkUserAccessToDocumentObject(User $user, $modulepart, $original_file, $mode = 'read')
 {
-	// Moduleparts of documents linked to a thirdparty: modulepart => array(element used to fetch the object, feature for restrictedArea(), [table for restrictedArea(), [feature2 for restrictedArea()]])
+	// Moduleparts of documents linked to a thirdparty: modulepart => array(element used to fetch the object, feature for restrictedArea(), ['TableName&SharedElement' for restrictedArea(), [feature2 for restrictedArea()]])
 	$modulepartlinkedtothirdparty = array(
 		'societe' => array('societe', 'societe'),
 		'company' => array('societe', 'societe'),
 		'thirdparty' => array('societe', 'societe'),
-		'contact' => array('contact', 'contact'),
-		'socpeople' => array('contact', 'contact'),
+		'contact' => array('contact', 'contact', 'socpeople&societe'),
+		'socpeople' => array('contact', 'contact', 'socpeople&societe'),
 		'facture' => array('facture', 'facture'),
 		'invoice' => array('facture', 'facture'),
 		'propal' => array('propal', 'propal'),
@@ -837,9 +837,9 @@ function checkUserAccessToDocumentObject(User $user, $modulepart, $original_file
 		'supplier_invoice' => array('invoice_supplier', 'fournisseur', 'facture_fourn', 'facture'),
 		'contract' => array('contrat', 'contrat'),
 		'contrat' => array('contrat', 'contrat'),
-		'fichinter' => array('fichinter', 'ficheinter'),
-		'ficheinter' => array('fichinter', 'ficheinter'),
-		'intervention' => array('fichinter', 'ficheinter'),
+		'fichinter' => array('fichinter', 'ficheinter', 'fichinter'),
+		'ficheinter' => array('fichinter', 'ficheinter', 'fichinter'),
+		'intervention' => array('fichinter', 'ficheinter', 'fichinter'),
 		'ticket' => array('ticket', 'ticket'),
 		'expedition' => array('expedition', 'expedition'),
 		'shipment' => array('expedition', 'expedition'),
@@ -958,6 +958,9 @@ function checkUserAccessToObject($user, array $featuresarray, $object = 0, $tabl
 		if ($feature == 'produit') {
 			// The module (and its permissions) is named 'produit', but the table of the product object is 'llx_product'
 			$dbtablename = 'product';
+			if (empty($sharedelement)) {
+				$sharedelement = 'product';
+			}
 		}
 		if ($feature == 'project') {
 			$feature = 'projet';
