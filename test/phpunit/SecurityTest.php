@@ -635,6 +635,63 @@ class SecurityTest extends CommonClassTest
 	}
 
 	/**
+	 * testCheckUserAccessToDocumentObjectOfSharedProduct
+	 *
+	 * @return void
+	 */
+	public function testCheckUserAccessToDocumentObjectOfSharedProduct(): void
+	{
+		global $conf,$user,$langs,$db,$mc;
+		$conf = $this->savconf;
+		$user = $this->savuser;
+		$langs = $this->savlangs;
+		$db = $this->savdb;
+
+		require_once DOL_DOCUMENT_ROOT.'/product/class/product.class.php';
+
+		$product = new Product($db);
+		$product->ref = 'testCheckUserAccessToDocumentObjectOfSharedProduct'.mt_rand(0, 99999);
+		$product->label = $product->ref;
+		$productid = $product->create($user);
+		$this->assertGreaterThan(0, $productid, 'Product must be created');
+		$otherentity = (int) $conf->entity + 1;
+		$db->query("UPDATE ".MAIN_DB_PREFIX."product SET entity = ".$otherentity." WHERE rowid = ".((int) $productid));
+
+		$mc = new class ((int) $conf->entity, $otherentity) {
+			/** @var int */
+			private $entity;
+			/** @var int */
+			private $sharingentity;
+
+			/**
+			 * @param int $entity			Current entity
+			 * @param int $sharingentity	Entity that shares its products with the current one
+			 */
+			public function __construct(int $entity, int $sharingentity)
+			{
+				$this->entity = $entity;
+				$this->sharingentity = $sharingentity;
+			}
+
+			/**
+			 * @param string $element	Sharing key
+			 * @return string			List of entities
+			 */
+			public function getEntity($element): string
+			{
+				return $element == 'product' ? $this->entity.','.$this->sharingentity : (string) $this->entity;
+			}
+		};
+
+		try {
+			$this->assertSame(1, checkUserAccessToDocumentObject($user, 'product', $product->ref.'/doc.pdf'), 'A product shared by another entity must be allowed');
+		} finally {
+			$mc = null;
+			$db->query("DELETE FROM ".MAIN_DB_PREFIX."product WHERE rowid = ".((int) $productid));
+		}
+	}
+
+	/**
 	 * testDolSanitizeUrl
 	 *
 	 * @return void
