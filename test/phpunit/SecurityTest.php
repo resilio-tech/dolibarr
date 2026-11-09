@@ -550,6 +550,94 @@ class SecurityTest extends CommonClassTest
 	}
 
 	/**
+	 * testCheckUserAccessToDocumentObject
+	 *
+	 * The documents of contacts, interventions and purchase orders must be allowed to a sales representative of their
+	 * third party, and refused to a user restricted to other third parties.
+	 *
+	 * @return void
+	 */
+	public function testCheckUserAccessToDocumentObject()
+	{
+		global $conf,$user,$langs,$db;
+		$conf = $this->savconf;
+		$user = $this->savuser;
+		$langs = $this->savlangs;
+		$db = $this->savdb;
+
+		require_once DOL_DOCUMENT_ROOT.'/societe/class/societe.class.php';
+		require_once DOL_DOCUMENT_ROOT.'/contact/class/contact.class.php';
+		require_once DOL_DOCUMENT_ROOT.'/fichinter/class/fichinter.class.php';
+		require_once DOL_DOCUMENT_ROOT.'/fourn/class/fournisseur.commande.class.php';
+
+		$soc = new Societe($db);
+		$soc->name = 'testCheckUserAccessToDocumentObject '.mt_rand(0, 99999);
+		$soc->client = 1;
+		$soc->code_client = -1;
+		$soc->fournisseur = 1;
+		$soc->code_fournisseur = -1;
+		$socid = $soc->create($user);
+		$this->assertGreaterThan(0, $socid, 'Third party must be created');
+
+		$contact = new Contact($db);
+		$contact->socid = $socid;
+		$contact->lastname = 'testCheckUserAccessToDocumentObject';
+		$contactid = $contact->create($user);
+		$this->assertGreaterThan(0, $contactid, 'Contact must be created');
+
+		$intervention = new Fichinter($db);
+		$intervention->socid = $socid;
+		$interventionid = $intervention->create($user);
+		$this->assertGreaterThan(0, $interventionid, 'Intervention must be created');
+		$intervention->fetch($interventionid);
+
+		$order = new CommandeFournisseur($db);
+		$order->socid = $socid;
+		$orderid = $order->create($user);
+		$this->assertGreaterThan(0, $orderid, 'Purchase order must be created');
+		$order->fetch($orderid);
+
+		$files = array(
+			'contact' => $contactid.'/photo.jpg',
+			'ficheinter' => $intervention->ref.'/'.$intervention->ref.'.pdf',
+			'commande_fournisseur' => $order->ref.'/'.$order->ref.'.pdf',
+		);
+
+		try {
+			$restricteduser = new User($db);
+			$restricteduser->id = $user->id;
+			$restricteduser->entity = $user->entity;
+			$restricteduser->socid = 0;
+			$restricteduser->rights = new stdClass();
+			$restricteduser->rights->societe = new stdClass();
+			$restricteduser->rights->societe->lire = 1;
+			$restricteduser->rights->societe->client = new stdClass();
+			$restricteduser->rights->societe->client->voir = 0;
+			$restricteduser->rights->societe->contact = new stdClass();
+			$restricteduser->rights->societe->contact->lire = 1;
+			$restricteduser->rights->ficheinter = new stdClass();
+			$restricteduser->rights->ficheinter->lire = 1;
+			$restricteduser->rights->fournisseur = new stdClass();
+			$restricteduser->rights->fournisseur->commande = new stdClass();
+			$restricteduser->rights->fournisseur->commande->lire = 1;
+
+			foreach ($files as $modulepart => $file) {
+				$this->assertSame(0, checkUserAccessToDocumentObject($restricteduser, $modulepart, $file), 'The document '.$modulepart.' of a third party not assigned to the restricted user must be refused');
+			}
+
+			$this->assertGreaterThanOrEqual(0, $soc->add_commercial($user, $restricteduser->id), 'User must be added as sales representative');
+			foreach ($files as $modulepart => $file) {
+				$this->assertSame(1, checkUserAccessToDocumentObject($restricteduser, $modulepart, $file), 'The sales representative of the third party can access the document '.$modulepart);
+			}
+		} finally {
+			$order->delete($user);
+			$intervention->delete($user);
+			$contact->delete($user);
+			$soc->delete($socid, $user);
+		}
+	}
+
+	/**
 	 * testDolSanitizeUrl
 	 *
 	 * @return void
