@@ -820,8 +820,8 @@ function checkUserAccessToDocumentObject(User $user, $modulepart, $original_file
 		'societe' => array('societe', 'societe'),
 		'company' => array('societe', 'societe'),
 		'thirdparty' => array('societe', 'societe'),
-		'contact' => array('contact', 'contact'),
-		'socpeople' => array('contact', 'contact'),
+		'contact' => array('contact', 'contact', 'socpeople&societe'),
+		'socpeople' => array('contact', 'contact', 'socpeople&societe'),
 		'facture' => array('facture', 'facture'),
 		'invoice' => array('facture', 'facture'),
 		'propal' => array('propal', 'propal'),
@@ -837,9 +837,9 @@ function checkUserAccessToDocumentObject(User $user, $modulepart, $original_file
 		'supplier_invoice' => array('invoice_supplier', 'fournisseur', 'facture_fourn', 'facture'),
 		'contract' => array('contrat', 'contrat'),
 		'contrat' => array('contrat', 'contrat'),
-		'fichinter' => array('fichinter', 'ficheinter'),
-		'ficheinter' => array('fichinter', 'ficheinter'),
-		'intervention' => array('fichinter', 'ficheinter'),
+		'fichinter' => array('fichinter', 'ficheinter', 'fichinter'),
+		'ficheinter' => array('fichinter', 'ficheinter', 'fichinter'),
+		'intervention' => array('fichinter', 'ficheinter', 'fichinter'),
 		'ticket' => array('ticket', 'ticket'),
 		'expedition' => array('expedition', 'expedition'),
 		'shipment' => array('expedition', 'expedition'),
@@ -870,18 +870,10 @@ function checkUserAccessToDocumentObject(User $user, $modulepart, $original_file
 		$refname = basename(dirname(dirname($original_file))."/");
 	}
 
-	// Pages like viewimage.php define NOREQUIRETRAN, but the fetch() of some objects (Contact, Societe, Ticket...) uses $langs
-	global $conf, $langs;
-	if (!is_object($langs)) {
-		include_once DOL_DOCUMENT_ROOT.'/core/class/translate.class.php';
-		$langs = new Translate('', $conf);
-		$langs->setDefaultLang(getDolGlobalString('MAIN_LANG_DEFAULT', 'auto'));
-	}
-
 	if (empty($modulepartlinkedtothirdparty[$modulepart])) {
 		$object = fetchObjectByElement(0, $modulepart, $refname);
 		if (is_object($object)) {
-			return restrictedArea($user, $modulepart, $object, getTableAndShareOfObject($object), '', 'fk_soc', 'rowid', 0, 1, $mode);
+			return restrictedArea($user, $modulepart, $object, '', '', 'fk_soc', 'rowid', 0, 1, $mode);
 		}
 		// If $modulepart is not an object type (userphoto, companylogo, memberphoto, apercuxxx, systemtools...), there is no object to check
 		return 1;
@@ -898,7 +890,7 @@ function checkUserAccessToDocumentObject(User $user, $modulepart, $original_file
 	}
 
 	if (is_object($object) && $object->id > 0) {
-		$tableandshare = (empty($modulepartlinkedtothirdparty[$modulepart][2]) ? getTableAndShareOfObject($object) : $modulepartlinkedtothirdparty[$modulepart][2]);
+		$tableandshare = (empty($modulepartlinkedtothirdparty[$modulepart][2]) ? '' : $modulepartlinkedtothirdparty[$modulepart][2]);
 		$feature2 = (empty($modulepartlinkedtothirdparty[$modulepart][3]) ? '' : $modulepartlinkedtothirdparty[$modulepart][3]);
 		return restrictedArea($user, $modulepartlinkedtothirdparty[$modulepart][1], $object, $tableandshare, $feature2, 'fk_soc', 'rowid', 0, 1, $mode);
 	}
@@ -910,26 +902,6 @@ function checkUserAccessToDocumentObject(User $user, $modulepart, $original_file
 	}
 
 	return 1;
-}
-
-/**
- * Return the 'TableName&SharedElement' parameter of restrictedArea() for an object.
- * Without it, restrictedArea() uses the name of the feature as table and sharing key, which is wrong when they differ
- * (contacts are into 'socpeople', vendor orders into 'commande_fournisseur', interventions into 'fichinter', shared products
- * would be checked on the current entity only, ...).
- *
- * @param	CommonObject	$object		Object
- * @return	string						'TableName&SharedElement', or '' if the object has no table
- * @see restrictedArea()
- */
-function getTableAndShareOfObject($object)
-{
-	if (empty($object->table_element)) {
-		return '';
-	}
-
-	// The element is the sharing key understood by getEntity()
-	return $object->table_element.(empty($object->element) ? '' : '&'.$object->element);
 }
 
 /**
@@ -986,6 +958,9 @@ function checkUserAccessToObject($user, array $featuresarray, $object = 0, $tabl
 		if ($feature == 'produit') {
 			// The module (and its permissions) is named 'produit', but the table of the product object is 'llx_product'
 			$dbtablename = 'product';
+			if (empty($sharedelement)) {
+				$sharedelement = 'product';
+			}
 		}
 		if ($feature == 'project') {
 			$feature = 'projet';

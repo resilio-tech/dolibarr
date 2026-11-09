@@ -334,6 +334,11 @@ if (!empty($hashp) && $hashp != 'shared') {
 if ($accessallowed && (empty($hashp) || $hashp == 'shared') && $needlogin && !$imagepublicfortakepos) {
 	// If $modulepart is not an object type (userphoto, companylogo, memberphoto, apercuxxx, systemtools...), there is no object to check
 	// a permission on: we keep the result of dol_check_secure_access_document(), that has checked the permission for this modulepart.
+	if (!is_object($langs)) {
+		include_once DOL_DOCUMENT_ROOT.'/core/class/translate.class.php';
+		$langs = new Translate('', $conf);
+		$langs->setDefaultLang(getDolGlobalString('MAIN_LANG_DEFAULT', 'auto'));
+	}
 	$accessallowed = checkUserAccessToDocumentObject($user, $modulepart, $original_file, 'read');
 }
 

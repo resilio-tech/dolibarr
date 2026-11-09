@@ -552,9 +552,6 @@ class SecurityTest extends CommonClassTest
 	/**
 	 * testCheckUserAccessToDocumentObject
 	 *
-	 * The documents of contacts, interventions and purchase orders must be allowed to a sales representative of their
-	 * third party, and refused to a user restricted to other third parties.
-	 *
 	 * @return void
 	 */
 	public function testCheckUserAccessToDocumentObject()
