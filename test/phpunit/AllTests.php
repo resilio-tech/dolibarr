@@ -154,6 +154,8 @@ class AllTests
 		$suite->addTestSuite('GetUrlLibTest');
 		require_once dirname(__FILE__).'/JsonLibTest.php';
 		$suite->addTestSuite('JsonLibTest');
+		require_once dirname(__FILE__).'/LdapTest.php';
+		$suite->addTestSuite('LdapTest');
 		require_once dirname(__FILE__).'/ImagesLibTest.php';
 		$suite->addTestSuite('ImagesLibTest');
 		require_once dirname(__FILE__).'/FunctionsLibTest.php';
