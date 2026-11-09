@@ -554,7 +554,7 @@ class SecurityTest extends CommonClassTest
 	 *
 	 * @return void
 	 */
-	public function testCheckUserAccessToDocumentObject()
+	public function testCheckUserAccessToDocumentObject(): void
 	{
 		global $conf,$user,$langs,$db;
 		$conf = $this->savconf;
