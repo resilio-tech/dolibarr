@@ -603,6 +603,10 @@ ALTER TABLE llx_prelevement_demande ADD COLUMN multicurrency_amount double(24,8)
 ALTER TABLE llx_prelevement ADD COLUMN fk_expensereport integer NULL AFTER fk_salary;
 ALTER TABLE llx_prelevement_demande ADD COLUMN fk_expensereport integer NULL AFTER fk_salary;
 
+-- Expense reports created before they had a currency are in the currency of their entity at rate 1
+UPDATE llx_expensereport SET multicurrency_code = (SELECT __DECRYPT('value')__ FROM llx_const WHERE __DECRYPT('name')__ = 'MAIN_MONNAIE' AND entity = llx_expensereport.entity), multicurrency_tx = 1, multicurrency_total_ht = total_ht, multicurrency_total_tva = total_tva, multicurrency_total_ttc = total_ttc WHERE multicurrency_code IS NULL OR multicurrency_code = '';
+UPDATE llx_expensereport_det SET multicurrency_code = (SELECT multicurrency_code FROM llx_expensereport WHERE rowid = llx_expensereport_det.fk_expensereport), multicurrency_subprice = subprice, multicurrency_subprice_ttc = value_unit, multicurrency_total_ht = total_ht, multicurrency_total_tva = total_tva, multicurrency_total_ttc = total_ttc WHERE multicurrency_code IS NULL OR multicurrency_code = '';
+
 -- Bank accounts of users: an empty currency is the company currency, and each user has one default bank account per currency
 UPDATE llx_user_rib SET currency_code = (SELECT __DECRYPT('value')__ FROM llx_const WHERE __DECRYPT('name')__ = 'MAIN_MONNAIE' AND entity = llx_user_rib.entity) WHERE currency_code IS NULL OR currency_code = '';
 UPDATE llx_user_rib SET default_rib = 1 WHERE rowid IN (SELECT rowid FROM (SELECT MIN(rowid) as rowid FROM llx_user_rib GROUP BY fk_user, currency_code HAVING MAX(default_rib) = 0) as tmp);
